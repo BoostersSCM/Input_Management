@@ -87,32 +87,19 @@ if not st.session_state.submission_list.empty:
     ]
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
-    date_parser = JsCode("""
-        function(params) {
-            var dateValue = params.newValue;
-            if (typeof dateValue === 'string' && dateValue.length === 8 && !isNaN(dateValue)) {
-                return dateValue.slice(0, 4) + '-' + dateValue.slice(4, 6) + '-' + dateValue.slice(6, 8);
-            }
-            return dateValue;
-        }
-    """)
-    uppercase_parser = JsCode("""
-        function(params) {
-            if (params.newValue && typeof params.newValue === 'string') {
-                return params.newValue.toUpperCase();
-            }
-            return params.newValue;
-        }
-    """)
+    date_parser = JsCode("""...""")
+    uppercase_parser = JsCode("""...""")
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
     
-    gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     # ▼▼▼ [수정된 부분] ▼▼▼
-    # cellEditor='agDateCellEditor'를 제거하여 일반 텍스트로 입력받도록 변경
+    # 엑셀처럼 여러 셀을 드래그하고 복사/붙여넣기 할 수 있도록 활성화
+    gb_submission.configure_grid_options(enableRangeSelection=True)
+    # ▲▲▲ [수정된 부분] ▲▲▲
+    
+    gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("입고일자", editable=True, valueParser=date_parser)
     gb_submission.configure_column("유통기한", editable=True, valueParser=date_parser)
-    # ▲▲▲ [수정된 부분] ▲▲▲
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0)
     
@@ -128,6 +115,7 @@ if not st.session_state.submission_list.empty:
         theme='streamlit',
         height=350,
         allow_unsafe_jscode=True,
+        enable_enterprise_modules=True, # 클립보드 기능은 엔터프라이즈 모듈 필요
         debounce_ms=500,
         key='submission_grid'
     )
