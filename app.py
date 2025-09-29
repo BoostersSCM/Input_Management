@@ -16,7 +16,9 @@ if 'submission_list' not in st.session_state:
 # --- 데이터 로딩 ---
 @st.cache_data
 def load_data():
+    """ERP DB에서 입고 예정 데이터를 불러옵니다."""
     df = get_source_data()
+    # 날짜/시간 타입을 문자열로 명확하게 변환
     if '입고예정일' in df.columns:
         df['입고예정일'] = pd.to_datetime(df['입고예정일']).dt.strftime('%Y-%m-%d')
     return df
@@ -26,38 +28,24 @@ source_df = load_data()
 # --- UI 섹션 ---
 st.header("1. 조회 조건 선택")
 
-# 1. 연쇄 드롭다운 선택 UI (브랜드 -> 품번 -> 발주번호)
+# 1. 연쇄 드롭다운 선택 UI
 selected_po = None
 if not source_df.empty:
-    # Step 1: 브랜드 선택
     brands = sorted(source_df['브랜드'].dropna().unique())
     selected_brand = st.selectbox(
-        "**브랜드**를 선택하세요.",
-        options=brands,
-        index=None,
-        placeholder="브랜드 검색..."
+        "**브랜드**를 선택하세요.", options=brands, index=None, placeholder="브랜드 검색..."
     )
-
-    # Step 2: 품번 선택
     if selected_brand:
         brand_df = source_df[source_df['브랜드'] == selected_brand]
         part_numbers = sorted(brand_df['품번'].unique())
         selected_part_number = st.selectbox(
-            "**품번**을 선택하세요.",
-            options=part_numbers,
-            index=None,
-            placeholder="품번 검색..."
+            "**품번**을 선택하세요.", options=part_numbers, index=None, placeholder="품번 검색..."
         )
-
-        # Step 3: 발주번호 선택
         if selected_part_number:
             part_number_df = brand_df[brand_df['품번'] == selected_part_number]
             po_numbers = sorted(part_number_df['발주번호'].unique())
             selected_po = st.selectbox(
-                "**발주번호**를 선택하세요.",
-                options=po_numbers,
-                index=None,
-                placeholder="발주번호 검색..."
+                "**발주번호**를 선택하세요.", options=po_numbers, index=None, placeholder="발주번호 검색..."
             )
 else:
     st.warning("조회할 입고 예정 데이터가 없습니다.")
@@ -66,41 +54,24 @@ else:
 st.header("2. 입고 예정 품목 선택")
 if selected_po:
     st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 아래 표에 추가할 항목을 선택하세요.")
-    
     source_grid_df = source_df[source_df['발주번호'] == selected_po].copy()
-    
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
     gb_source.configure_selection('multiple', use_checkbox=True)
     gridOptions_source = gb_source.build()
-
     source_grid_response = AgGrid(
-        source_grid_df,
-        gridOptions=gridOptions_source,
-        height=300,
-        theme='streamlit',
-        reload_data=True
+        source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True
     )
-    
     selected_rows = source_grid_response["selected_rows"]
-
-    # ▼▼▼ [수정된 부분] ▼▼▼
     if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=len(selected_rows) == 0):
         new_items_df = pd.DataFrame(selected_rows).drop(columns=['_selectedRowNodeInfo'], errors='ignore')
-        
-        # 편집용 표에 필요한 기본 컬럼 추가
         new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items_df['LOT'] = ''
         new_items_df['유통기한'] = ''
         new_items_df['확정수량'] = new_items_df['예정수량']
-        
         current_list = st.session_state.submission_list
-        
-        # drop_duplicates() 로직을 제거하여 중복 추가가 가능하도록 함
         combined_list = pd.concat([current_list, new_items_df]).reset_index(drop=True)
-        
         st.session_state.submission_list = combined_list
         st.rerun()
-    # ▲▲▲ [수정된 부분] ▲▲▲
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
@@ -108,7 +79,6 @@ else:
 st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
-    
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df)
     gb_submission.configure_column("버전", editable=True)
     gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor')
@@ -126,7 +96,11 @@ if not st.session_state.submission_list.empty:
         fit_columns_on_grid_load=True,
         theme='streamlit',
         height=350,
-        allow_unsafe_jscode=True
+        allow_unsafe_jscode=True,
+        # ▼▼▼ [수정된 부분] ▼▼▼
+        # 사용자가 입력을 멈춘 후 0.5초 뒤에 업데이트하여 즉각적인 새로고침 방지
+        debounce_ms=500
+        # ▲▲▲ [수정된 부분] ▲▲▲
     )
     
     st.session_state.submission_list = submission_grid_response['data']
@@ -160,6 +134,5 @@ if not st.session_state.submission_list.empty:
                     st.rerun()
                 else:
                     st.error(f"DB 전송 실패: {message}")
-
 else:
     st.info("위에서 품목을 추가하면 여기에 표시됩니다.")
