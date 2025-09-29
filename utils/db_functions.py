@@ -34,25 +34,30 @@ def get_product_data():
             return pd.DataFrame() # 오류 발생 시 빈 데이터프레임 반환
     return pd.DataFrame()
 
-# --- 입고 데이터 삽입 함수 ---
 def insert_receiving_data(data_list):
+    """입고 데이터를 DB 테이블에 삽입합니다."""
     if conn and data_list:
         cursor = conn.cursor()
         try:
-            # SQL Injection 방지를 위해 파라미터화된 쿼리 사용
+            # ▼▼▼ [수정된 부분] ▼▼▼
+            # 테이블 경로를 [스키마].[테이블명]으로 정확히 지정합니다.
             query = """
-                INSERT INTO YourReceivingTable (입고일자, 품번, 품명, 버전, LOT, 유통기한, B2B수량, B2C수량)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
-            """ # 실제 테이블명과 컬럼명으로 변경
+                INSERT INTO [scm].[input_manage_master] 
+                (입고일자, 발주번호, 품번, 품명, 버전, LOT, 유통기한, 확정수량, 확정일, 입고예정수량)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), 0) 
+            """
+            # ▲▲▲ [수정된 부분] ▲▲▲
             
-            # 딕셔너리 리스트를 튜플 리스트로 변환
-            rows_to_insert = [tuple(d.values()) for d in data_list]
+            rows_to_insert = [
+                (d['입고일자'], d['발주번호'], d['품번'], d['품명'], d['버전'], d['LOT'], d['유통기한'], d['확정수량'])
+                for d in data_list
+            ]
             
             cursor.executemany(query, rows_to_insert)
             conn.commit()
             return True, "데이터 전송 성공"
         except Exception as e:
-            conn.rollback() # 오류 발생 시 롤백
+            conn.rollback()
             return False, str(e)
         finally:
             cursor.close()
