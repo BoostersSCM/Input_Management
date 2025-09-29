@@ -20,6 +20,9 @@ def load_data():
     df = get_source_data()
     if '입고예정일' in df.columns:
         df['입고예정일'] = pd.to_datetime(df['입고예정일']).dt.strftime('%Y-%m-%d')
+    # 숫자 컬럼을 명확하게 숫자 타입으로 변환하여 오류 방지
+    if '예정수량' in df.columns:
+        df['예정수량'] = pd.to_numeric(df['예정수량'], errors='coerce').fillna(0)
     return df
 
 source_df = load_data()
@@ -87,8 +90,7 @@ if not st.session_state.submission_list.empty:
     ]
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
-    # ▼▼▼ [수정된 부분] ▼▼▼
-    # 생략되었던 JsCode를 다시 채워 넣었습니다.
+    # --- JsCode로 자동 변환 함수 정의 ---
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -106,7 +108,19 @@ if not st.session_state.submission_list.empty:
             return params.newValue;
         }
     """)
-    # ▲▲▲ [수정된 부분] ▲▲▲
+    # 숫자 자동 변환 (쉼표 제거 및 숫자로 파싱)
+    number_parser = JsCode("""
+        function(params) {
+            var value = params.newValue;
+            if (value === null || value === undefined || value === '') {
+                return null;
+            }
+            // 쉼표(,)를 제거하고 숫자로 변환
+            var numberValue = Number(String(value).replace(/,/g, ''));
+            // 유효한 숫자인지 확인, 아니면 이전 값 유지 또는 null 반환
+            return isNaN(numberValue) ? params.oldValue : numberValue;
+        }
+    """)
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
     
@@ -117,7 +131,10 @@ if not st.session_state.submission_list.empty:
     gb_submission.configure_column("입고일자", editable=True, valueParser=date_parser)
     gb_submission.configure_column("유통기한", editable=True, valueParser=date_parser)
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
-    gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0)
+    # 확정수량 컬럼에 새로 만든 숫자 파서(number_parser)를 적용
+    gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0, valueParser=number_parser)
+    # 읽기 전용인 예정수량 컬럼에도 숫자 형식을 지정하여 쉼표 표시
+    gb_submission.configure_column("예정수량", type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
     
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
@@ -131,7 +148,7 @@ if not st.session_state.submission_list.empty:
         theme='streamlit',
         height=350,
         allow_unsafe_jscode=True,
-        enable_enterprise_modules=True, # 클립보드 기능은 엔터프라이즈 모듈 필요
+        enable_enterprise_modules=True, 
         debounce_ms=500,
         key='submission_grid'
     )
