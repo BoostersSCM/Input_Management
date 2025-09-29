@@ -81,15 +81,12 @@ st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
     
-    # 표시할 컬럼 순서를 명확하게 지정하여 인덱스 컬럼이 나타나지 않도록 합니다.
     display_columns = [
         '발주번호', '품번', '품명', '예정수량', '버전', 
         '입고일자', 'LOT', '유통기한', '확정수량'
     ]
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
-    # ▼▼▼ [수정된 부분] ▼▼▼
-    # 생략되었던 JsCode를 다시 채워 넣었습니다.
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -107,14 +104,16 @@ if not st.session_state.submission_list.empty:
             return params.newValue;
         }
     """)
-    # ▲▲▲ [수정된 부분] ▲▲▲
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
     
     gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
-    gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    # cellEditor='agDateCellEditor'를 제거하여 일반 텍스트로 입력받도록 변경
+    gb_submission.configure_column("입고일자", editable=True, valueParser=date_parser)
+    gb_submission.configure_column("유통기한", editable=True, valueParser=date_parser)
+    # ▲▲▲ [수정된 부분] ▲▲▲
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
-    gb_submission.configure_column("유통기한", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
     gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0)
     
     gb_submission.configure_selection('multiple', use_checkbox=True)
