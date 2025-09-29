@@ -94,3 +94,8 @@ if selected_po:
                     success, message = insert_receiving_data(data_to_submit)
                     
                     if success:
+                        st.success(f"✅ 성공! {len(data_to_submit)}개의 데이터를 DB에 전송했습니다.")
+                        st.cache_data.clear() # 성공 후 캐시 초기화
+                        st.rerun()
+                    else:
+                        st.error(f"DB 전송 실패: {message}")
