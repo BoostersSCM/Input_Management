@@ -87,15 +87,31 @@ if not st.session_state.submission_list.empty:
     ]
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
-    date_parser = JsCode("""...""")
-    uppercase_parser = JsCode("""...""")
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    # 생략되었던 JsCode를 다시 채워 넣었습니다.
+    date_parser = JsCode("""
+        function(params) {
+            var dateValue = params.newValue;
+            if (typeof dateValue === 'string' && dateValue.length === 8 && !isNaN(dateValue)) {
+                return dateValue.slice(0, 4) + '-' + dateValue.slice(4, 6) + '-' + dateValue.slice(6, 8);
+            }
+            return dateValue;
+        }
+    """)
+    uppercase_parser = JsCode("""
+        function(params) {
+            if (params.newValue && typeof params.newValue === 'string') {
+                return params.newValue.toUpperCase();
+            }
+            return params.newValue;
+        }
+    """)
+    # ▲▲▲ [수정된 부분] ▲▲▲
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
     
-    # ▼▼▼ [수정된 부분] ▼▼▼
     # 엑셀처럼 여러 셀을 드래그하고 복사/붙여넣기 할 수 있도록 활성화
     gb_submission.configure_grid_options(enableRangeSelection=True)
-    # ▲▲▲ [수정된 부분] ▲▲▲
     
     gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("입고일자", editable=True, valueParser=date_parser)
