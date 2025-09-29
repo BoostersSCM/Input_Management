@@ -43,12 +43,14 @@ conn_scm = init_connection_scm()
 
 # --- 데이터 조회 함수 (ERP DB 사용) ---
 def get_source_data():
-    """ERP DB에서 발주번호, 품번, 품명 데이터를 조회합니다."""
+    """ERP DB에서 브랜드, 발주번호, 품번, 품명 데이터를 조회합니다."""
     if conn_erp:
         try:
-            # 제공해주신 쿼리 (SQL Server 문법으로 DATE_SUB 변경)
+            # ▼▼▼ [수정된 부분] ▼▼▼
+            # BrandName AS 브랜드 컬럼을 추가합니다.
             query = """
                 SELECT 
+                    BrandName AS 브랜드,
                     ItemNo AS 품번,
                     ItemName AS 품명,
                     TPONO AS 발주번호
@@ -57,10 +59,11 @@ def get_source_data():
                 WHERE 
                     created_at >= DATEADD(month, -12, GETDATE())
             """
+            # ▲▲▲ [수정된 부분] ▲▲▲
             df = pd.read_sql(query, conn_erp)
             return df
         except Exception as e:
-            st.error(f"발주/제품 데이터 조회 오류: {e}")
+            st.error(f"소스 데이터 조회 오류: {e}")
             return pd.DataFrame()
     return pd.DataFrame()
 
