@@ -59,15 +59,26 @@ if selected_po:
     source_grid_response = AgGrid(
         source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
     )
-    selected_rows = source_grid_response["selected_rows"]
-    if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=len(selected_rows) == 0):
-        new_items_df = pd.DataFrame(selected_rows).drop(columns=['_selectedRowNodeInfo'], errors='ignore')
+source_grid_response = AgGrid(
+        source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
+    )
+
+    # selected_rows는 DataFrame일 수 있습니다.
+    selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
+
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    # DataFrame이 비어있는지 확인할 때는 .empty 속성을 사용합니다.
+    if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=selected_rows.empty):
+    # ▲▲▲ [수정된 부분] ▲▲▲
+        new_items_df = selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore')
         new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items_df['LOT'] = ''
         new_items_df['유통기한'] = ''
         new_items_df['확정수량'] = new_items_df['예정수량']
+        
         current_list = st.session_state.submission_list
         combined_list = pd.concat([current_list, new_items_df]).reset_index(drop=True)
+        
         st.session_state.submission_list = combined_list
         st.rerun()
 else:
