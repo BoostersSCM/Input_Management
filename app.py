@@ -85,20 +85,22 @@ if selected_po:
 
     # ▼▼▼ [수정된 부분] ▼▼▼
     if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=len(selected_rows) == 0):
-    # ▲▲▲ [수정된 부분] ▲▲▲
         new_items_df = pd.DataFrame(selected_rows).drop(columns=['_selectedRowNodeInfo'], errors='ignore')
+        
+        # 편집용 표에 필요한 기본 컬럼 추가
         new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items_df['LOT'] = ''
         new_items_df['유통기한'] = ''
         new_items_df['확정수량'] = new_items_df['예정수량']
         
         current_list = st.session_state.submission_list
-        combined_list = pd.concat([current_list, new_items_df]).drop_duplicates(
-            subset=['발주번호', '품번', '버전']
-        ).reset_index(drop=True)
+        
+        # drop_duplicates() 로직을 제거하여 중복 추가가 가능하도록 함
+        combined_list = pd.concat([current_list, new_items_df]).reset_index(drop=True)
         
         st.session_state.submission_list = combined_list
         st.rerun()
+    # ▲▲▲ [수정된 부분] ▲▲▲
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
