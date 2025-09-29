@@ -3,8 +3,6 @@ import streamlit as st
 import pyodbc
 import pandas as pd
 
-# --- DB 커넥션 생성 (2개) ---
-
 @st.cache_resource
 def init_connection_erp():
     """ERP DB(데이터 조회용)에 연결합니다."""
@@ -40,26 +38,24 @@ def init_connection_scm():
 conn_erp = init_connection_erp()
 conn_scm = init_connection_scm()
 
-
-# --- 데이터 조회 함수 (ERP DB 사용) ---
 def get_source_data():
-    """ERP DB에서 브랜드, 발주번호, 품번, 품명 데이터를 조회합니다."""
+    """ERP DB에서 소스 데이터를 조회합니다."""
     if conn_erp:
         try:
-            # ▼▼▼ [수정된 부분] ▼▼▼
-            # BrandName AS 브랜드 컬럼을 추가합니다.
+            # ▼▼▼ [수정된 최종 쿼리] ▼▼▼
             query = """
                 SELECT 
                     BrandName AS 브랜드,
                     ItemNo AS 품번,
                     ItemName AS 품명,
-                    TPONO AS 발주번호
+                    TPONO AS 발주번호,
+                    ROUND(Qty, 0) AS 입고예정수량
                 FROM 
                     boosters_erp.invoice_requests
                 WHERE 
                     created_at >= DATEADD(month, -12, GETDATE())
             """
-            # ▲▲▲ [수정된 부분] ▲▲▲
+            # ▲▲▲ [수정된 최종 쿼리] ▲▲▲
             df = pd.read_sql(query, conn_erp)
             return df
         except Exception as e:
@@ -67,10 +63,8 @@ def get_source_data():
             return pd.DataFrame()
     return pd.DataFrame()
 
-# --- 데이터 저장 함수 (SCM DB 사용) ---
 def insert_receiving_data(data_list):
     """입고 데이터를 SCM DB 테이블에 삽입합니다."""
-    # 이 함수는 conn_scm을 사용합니다.
     if conn_scm and data_list:
         cursor = conn_scm.cursor()
         try:
