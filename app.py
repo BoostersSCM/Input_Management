@@ -83,7 +83,9 @@ if selected_po:
     
     selected_rows = source_grid_response["selected_rows"]
 
-    if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=not selected_rows):
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=len(selected_rows) == 0):
+    # ▲▲▲ [수정된 부분] ▲▲▲
         new_items_df = pd.DataFrame(selected_rows).drop(columns=['_selectedRowNodeInfo'], errors='ignore')
         new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items_df['LOT'] = ''
@@ -99,7 +101,6 @@ if selected_po:
         st.rerun()
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
-
 
 # 3. (하단) 편집 및 최종 등록용 그리드
 st.header("3. 입고 정보 편집 및 최종 등록")
