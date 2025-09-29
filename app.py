@@ -34,7 +34,7 @@ def add_to_submission_list(items_df):
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
         new_items['유통기한'] = ''
-        new_items['확정수량'] = 0  # 기본값 0으로 설정
+        new_items['확정수량'] = 0
         
         current_list = st.session_state.submission_list
         combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
@@ -116,8 +116,7 @@ if selected_po:
     if source_grid_response.get("cellClicked"):
         clicked_info = source_grid_response["cellClicked"]
         if clicked_info and clicked_info['colDef']['headerName'] == '추가':
-            clicked_row_df = pd.DataFrame([clicked_info['data']])
-            add_to_submission_list(clicked_row_df)
+            add_to_submission_list(pd.DataFrame([clicked_info['data']]))
 
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
     if st.button("🔽 체크된 항목 모두 아래에 추가", disabled=selected_rows.empty):
@@ -155,7 +154,9 @@ if not st.session_state.submission_list.empty:
     number_parser = JsCode("""
         function(params) {
             var value = params.newValue;
-            if (value === null || value === undefined || value === '') { return null; }
+            if (value === null || value === undefined || value === '') { 
+                return null; 
+            }
             var numberValue = Number(String(value).replace(/,/g, ''));
             return isNaN(numberValue) ? params.oldValue : numberValue;
         }
@@ -179,7 +180,12 @@ if not st.session_state.submission_list.empty:
         debounce_ms=500, key='submission_grid'
     )
     
-    st.session_state.submission_list = pd.DataFrame(submission_grid_response['data'])
+    response_df = pd.DataFrame(submission_grid_response['data'])
+    if not response_df.empty:
+        response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
+    
+    st.session_state.submission_list = response_df
+
     selected_submission_rows = pd.DataFrame(submission_grid_response["selected_rows"])
     
     col1, col2, col3 = st.columns([2, 2, 8])
