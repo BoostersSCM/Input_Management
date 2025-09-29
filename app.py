@@ -20,12 +20,26 @@ def load_data():
     df = get_source_data()
     if '입고예정일' in df.columns:
         df['입고예정일'] = pd.to_datetime(df['입고예정일']).dt.strftime('%Y-%m-%d')
-    # 숫자 컬럼을 명확하게 숫자 타입으로 변환하여 오류 방지
     if '예정수량' in df.columns:
         df['예정수량'] = pd.to_numeric(df['예정수량'], errors='coerce').fillna(0)
     return df
 
 source_df = load_data()
+
+# --- 공통 함수 ---
+def add_to_submission_list(items_df):
+    """선택된 항목을 아래 편집 리스트에 추가하는 함수"""
+    if not items_df.empty:
+        new_items = items_df.copy()
+        new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
+        new_items['LOT'] = ''
+        new_items['유통기한'] = ''
+        new_items['확정수량'] = new_items['예정수량']
+        
+        current_list = st.session_state.submission_list
+        combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
+        st.session_state.submission_list = combined_list
+        st.rerun()
 
 # --- UI 섹션 ---
 st.header("1. 조회 조건 선택")
@@ -55,27 +69,68 @@ else:
 # 2. (상단) 참고용 그리드
 st.header("2. 입고 예정 품목 선택")
 if selected_po:
-    st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 아래 표에 추가할 항목을 선택하세요.")
+    st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 각 행의 '+' 버튼을 누르거나, 체크박스로 여러 항목을 선택 후 아래 버튼을 눌러 추가하세요.")
     source_grid_df = source_df[source_df['발주번호'] == selected_po].copy()
+    
+    # '+' 버튼 렌더러 JsCode
+    add_button_renderer = JsCode("""
+        class ButtonRenderer {
+            init(params) {
+                this.params = params;
+                this.eGui = document.createElement('button');
+                this.eGui.innerHTML = '+';
+                this.eGui.style.cssText = `
+                    background-color: transparent; 
+                    border: 1px solid green; 
+                    color: green; 
+                    cursor: pointer; 
+                    width: 100%; 
+                    height: 100%;
+                `;
+                this.eGui.addEventListener('click', () => this.buttonClicked());
+            }
+            getGui() {
+                return this.eGui;
+            }
+            buttonClicked() {
+                this.params.api.onCellClicked({
+                    colDef: { headerName: '추가' },
+                    data: this.params.data,
+                    node: this.params.node
+                });
+            }
+        }
+    """)
+    
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
-    gb_source.configure_selection('multiple', use_checkbox=True)
+    gb_source.configure_selection('multiple', use_checkbox=True, header_checkbox=True)
+    # '추가' 컬럼을 만들고 '+' 버튼 렌더러 적용
+    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left')
     gridOptions_source = gb_source.build()
+    
     source_grid_response = AgGrid(
-        source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
+        source_grid_df, 
+        gridOptions=gridOptions_source, 
+        height=300, 
+        theme='streamlit', 
+        allow_unsafe_jscode=True,
+        # 셀 클릭 이벤트를 받기 위해 update_mode 설정
+        update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.CELL_CLICKED,
+        key='source_grid'
     )
     
-    selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
+    # '+' 버튼 클릭 처리
+    if source_grid_response.get("cellClicked"):
+        clicked_info = source_grid_response["cellClicked"]
+        if clicked_info and clicked_info['colDef']['headerName'] == '추가':
+            clicked_row_df = pd.DataFrame([clicked_info['data']])
+            add_to_submission_list(clicked_row_df)
 
-    if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=selected_rows.empty):
-        new_items_df = selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore')
-        new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
-        new_items_df['LOT'] = ''
-        new_items_df['유통기한'] = ''
-        new_items_df['확정수량'] = new_items_df['예정수량']
-        current_list = st.session_state.submission_list
-        combined_list = pd.concat([current_list, new_items_df]).reset_index(drop=True)
-        st.session_state.submission_list = combined_list
-        st.rerun()
+    # 다중 선택 후 추가 버튼
+    selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
+    if st.button("🔽 체크된 항목 모두 아래에 추가", disabled=selected_rows.empty):
+        add_to_submission_list(selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore'))
+
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
@@ -84,13 +139,11 @@ st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
     
-    display_columns = [
-        '발주번호', '품번', '품명', '예정수량', '버전', 
-        '입고일자', 'LOT', '유통기한', '확정수량'
-    ]
+    display_columns = ['발주번호', '품번', '품명', '예정수량', '버전', '입고일자', 'LOT', '유통기한', '확정수량']
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
     # --- JsCode로 자동 변환 함수 정의 ---
+    # 날짜 자동 변환 (YYYYMMDD -> YYYY-MM-DD)
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -100,6 +153,7 @@ if not st.session_state.submission_list.empty:
             return dateValue;
         }
     """)
+    # 대문자 자동 변환
     uppercase_parser = JsCode("""
         function(params) {
             if (params.newValue && typeof params.newValue === 'string') {
@@ -115,42 +169,27 @@ if not st.session_state.submission_list.empty:
             if (value === null || value === undefined || value === '') {
                 return null;
             }
-            // 쉼표(,)를 제거하고 숫자로 변환
             var numberValue = Number(String(value).replace(/,/g, ''));
-            // 유효한 숫자인지 확인, 아니면 이전 값 유지 또는 null 반환
             return isNaN(numberValue) ? params.oldValue : numberValue;
         }
     """)
-
+    
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
-    
-    # 엑셀처럼 여러 셀을 드래그하고 복사/붙여넣기 할 수 있도록 활성화
     gb_submission.configure_grid_options(enableRangeSelection=True)
-    
     gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("입고일자", editable=True, valueParser=date_parser)
     gb_submission.configure_column("유통기한", editable=True, valueParser=date_parser)
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
-    # 확정수량 컬럼에 새로 만든 숫자 파서(number_parser)를 적용
     gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0, valueParser=number_parser)
-    # 읽기 전용인 예정수량 컬럼에도 숫자 형식을 지정하여 쉼표 표시
-    gb_submission.configure_column("예정수량", type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
-    
+    gb_submission.configure_column("예정수량", type=["numericColumn"], precision=0)
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
     
     submission_grid_response = AgGrid(
-        submission_df_display,
-        gridOptions=gridOptions_submission,
-        data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        fit_columns_on_grid_load=True,
-        theme='streamlit',
-        height=350,
-        allow_unsafe_jscode=True,
-        enable_enterprise_modules=True, 
-        debounce_ms=500,
-        key='submission_grid'
+        submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
+        update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
+        height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
+        debounce_ms=500, key='submission_grid'
     )
     
     st.session_state.submission_list = pd.DataFrame(submission_grid_response['data'])
