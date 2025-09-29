@@ -61,10 +61,8 @@ if selected_po:
         source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
     )
     
-    # selected_rows를 DataFrame으로 변환
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
 
-    # DataFrame이 비어있는지 확인할 때는 .empty 속성을 사용
     if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=selected_rows.empty):
         new_items_df = selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore')
         new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
@@ -84,6 +82,7 @@ if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
     
     # --- JsCode로 자동 변환 함수 정의 ---
+    # 날짜 자동 변환 (YYYYMMDD -> YYYY-MM-DD)
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -93,6 +92,7 @@ if not st.session_state.submission_list.empty:
             return dateValue;
         }
     """)
+    # 대문자 자동 변환
     uppercase_parser = JsCode("""
         function(params) {
             if (params.newValue && typeof params.newValue === 'string') {
@@ -104,11 +104,13 @@ if not st.session_state.submission_list.empty:
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df)
     
+    # valueParser를 사용하여 자동 변환 기능 적용
     gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
-    gb_submission.configure_column("유통기한", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
-    gb_submission.configure_column("확정수량", editable=True, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
+    gb_submission.configure_column("유통기han", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
+    gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0)
+    
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
     
