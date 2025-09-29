@@ -81,35 +81,47 @@ st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
     
-    # ▼▼▼ [수정된 부분 1] ▼▼▼
     # 표시할 컬럼 순서를 명확하게 지정하여 인덱스 컬럼이 나타나지 않도록 합니다.
     display_columns = [
         '발주번호', '품번', '품명', '예정수량', '버전', 
         '입고일자', 'LOT', '유통기한', '확정수량'
     ]
-    # submission_df에 없는 컬럼이 있을 경우를 대비하여 안전하게 필터링
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
-    # ▲▲▲ [수정된 부분 1] ▲▲▲
 
-    date_parser = JsCode("""...""") # JsCode는 길어서 생략, 이전 코드와 동일
-    uppercase_parser = JsCode("""...""") # JsCode는 길어서 생략, 이전 코드와 동일
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    # 생략되었던 JsCode를 다시 채워 넣었습니다.
+    date_parser = JsCode("""
+        function(params) {
+            var dateValue = params.newValue;
+            if (typeof dateValue === 'string' && dateValue.length === 8 && !isNaN(dateValue)) {
+                return dateValue.slice(0, 4) + '-' + dateValue.slice(4, 6) + '-' + dateValue.slice(6, 8);
+            }
+            return dateValue;
+        }
+    """)
+    uppercase_parser = JsCode("""
+        function(params) {
+            if (params.newValue && typeof params.newValue === 'string') {
+                return params.newValue.toUpperCase();
+            }
+            return params.newValue;
+        }
+    """)
+    # ▲▲▲ [수정된 부분] ▲▲▲
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
     
     gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
-    # ▼▼▼ [수정된 부분 2] ▼▼▼
-    # '유통기han' 오타를 '유통기한'으로 수정했습니다.
     gb_submission.configure_column("유통기한", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
-    # ▲▲▲ [수정된 부분 2] ▲▲▲
     gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0)
     
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
     
     submission_grid_response = AgGrid(
-        submission_df_display, # 정제된 데이터프레임을 사용
+        submission_df_display,
         gridOptions=gridOptions_submission,
         data_return_mode=DataReturnMode.AS_INPUT,
         update_mode=GridUpdateMode.MODEL_CHANGED,
@@ -127,7 +139,6 @@ if not st.session_state.submission_list.empty:
     col1, col2, col3 = st.columns([2, 2, 8])
     with col1:
         if st.button("선택 항목 삭제", disabled=selected_submission_rows.empty):
-            # 선택된 행의 원본 인덱스를 가져와서 삭제
             indices_to_drop = selected_submission_rows.index
             st.session_state.submission_list = st.session_state.submission_list.drop(indices_to_drop).reset_index(drop=True)
             st.rerun()
