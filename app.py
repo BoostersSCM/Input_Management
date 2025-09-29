@@ -16,6 +16,7 @@ if 'submission_list' not in st.session_state:
 # --- 데이터 로딩 ---
 @st.cache_data
 def load_data():
+    """ERP DB에서 입고 예정 데이터를 불러옵니다."""
     df = get_source_data()
     if '입고예정일' in df.columns:
         df['입고예정일'] = pd.to_datetime(df['입고예정일']).dt.strftime('%Y-%m-%d')
@@ -59,26 +60,19 @@ if selected_po:
     source_grid_response = AgGrid(
         source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
     )
-source_grid_response = AgGrid(
-        source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
-    )
-
-    # selected_rows는 DataFrame일 수 있습니다.
+    
+    # selected_rows를 DataFrame으로 변환
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
 
-    # ▼▼▼ [수정된 부분] ▼▼▼
-    # DataFrame이 비어있는지 확인할 때는 .empty 속성을 사용합니다.
+    # DataFrame이 비어있는지 확인할 때는 .empty 속성을 사용
     if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=selected_rows.empty):
-    # ▲▲▲ [수정된 부분] ▲▲▲
         new_items_df = selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore')
         new_items_df['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items_df['LOT'] = ''
         new_items_df['유통기한'] = ''
         new_items_df['확정수량'] = new_items_df['예정수량']
-        
         current_list = st.session_state.submission_list
         combined_list = pd.concat([current_list, new_items_df]).reset_index(drop=True)
-        
         st.session_state.submission_list = combined_list
         st.rerun()
 else:
@@ -90,7 +84,6 @@ if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
     
     # --- JsCode로 자동 변환 함수 정의 ---
-    # 날짜 자동 변환 (YYYYMMDD -> YYYY-MM-DD)
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -100,7 +93,6 @@ if not st.session_state.submission_list.empty:
             return dateValue;
         }
     """)
-    # 대문자 자동 변환
     uppercase_parser = JsCode("""
         function(params) {
             if (params.newValue && typeof params.newValue === 'string') {
@@ -112,13 +104,11 @@ if not st.session_state.submission_list.empty:
 
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df)
     
-    # 편집 가능한 컬럼에 자동 변환 함수 적용
     gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("유통기한", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
     gb_submission.configure_column("확정수량", editable=True, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
-    
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
     
@@ -131,17 +121,17 @@ if not st.session_state.submission_list.empty:
         theme='streamlit',
         height=350,
         allow_unsafe_jscode=True,
-        debounce_ms=500, # 입력 중 새로고침 방지
-        key='submission_grid' # 그리드 상태 유지를 위한 고유 키
+        debounce_ms=500,
+        key='submission_grid'
     )
     
-    st.session_state.submission_list = submission_grid_response['data']
-    selected_submission_rows = submission_grid_response["selected_rows"]
+    st.session_state.submission_list = pd.DataFrame(submission_grid_response['data'])
+    selected_submission_rows = pd.DataFrame(submission_grid_response["selected_rows"])
     
     col1, col2, col3 = st.columns([2, 2, 8])
     with col1:
-        if st.button("선택 항목 삭제", disabled=not selected_submission_rows):
-            selected_indices = [row['_selectedRowNodeInfo']['nodeRowIndex'] for row in selected_submission_rows]
+        if st.button("선택 항목 삭제", disabled=selected_submission_rows.empty):
+            selected_indices = [row['_selectedRowNodeInfo']['nodeRowIndex'] for _, row in selected_submission_rows.iterrows()]
             st.session_state.submission_list = st.session_state.submission_list.drop(selected_indices).reset_index(drop=True)
             st.rerun()
     with col2:
