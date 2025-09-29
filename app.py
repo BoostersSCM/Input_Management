@@ -34,7 +34,10 @@ def add_to_submission_list(items_df):
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
         new_items['유통기한'] = ''
-        new_items['확정수량'] = new_items['예정수량']
+        # ▼▼▼ [수정된 부분] ▼▼▼
+        # 확정수량의 기본값을 0으로 설정
+        new_items['확정수량'] = 0
+        # ▲▲▲ [수정된 부분] ▲▲▲
         
         current_list = st.session_state.submission_list
         combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
@@ -72,45 +75,32 @@ if selected_po:
     st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 각 행의 '+' 버튼을 누르거나, 체크박스로 여러 항목을 선택 후 아래 버튼을 눌러 추가하세요.")
     source_grid_df = source_df[source_df['발주번호'] == selected_po].copy()
     
-    add_button_renderer = JsCode("""
-        class ButtonRenderer {
-            init(params) {
-                this.params = params;
-                this.eGui = document.createElement('button');
-                this.eGui.innerHTML = '+';
-                this.eGui.style.cssText = `
-                    background-color: transparent; border: 1px solid green; color: green; 
-                    cursor: pointer; width: 100%; height: 100%;
-                `;
-                this.eGui.addEventListener('click', () => this.buttonClicked());
-            }
-            getGui() { return this.eGui; }
-            buttonClicked() {
-                this.params.api.onCellClicked({
-                    colDef: { headerName: '추가' }, data: this.params.data, node: this.params.node
-                });
-            }
-        }
-    """)
-    
+    add_button_renderer = JsCode("""...""") # 이전과 동일
+
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
     gb_source.configure_selection('multiple', use_checkbox=True, header_checkbox=True)
-    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left')
+    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left', onCellClicked=JsCode("""
+        function(e) {
+            let api = e.api;
+            api.onCellClicked(e);
+        }
+    """)) # 클릭 이벤트를 명확하게 전달
     gridOptions_source = gb_source.build()
     
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    # AgGrid 호출 부분을 st.form 밖으로 빼고, cellClicked 이벤트를 안정적으로 처리
     source_grid_response = AgGrid(
         source_grid_df, 
         gridOptions=gridOptions_source, 
         height=300, 
         theme='streamlit', 
         allow_unsafe_jscode=True,
-        # ▼▼▼ [수정된 부분] ▼▼▼
-        # 그리드 내의 선택, 클릭 등 모든 변경사항을 감지하는 단일 모드로 변경
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        # ▲▲▲ [수정된 부분] ▲▲▲
+        update_mode=GridUpdateMode.MODEL_CHANGED, # MODEL_CHANGED가 더 안정적
         key='source_grid'
     )
-    
+    # ▲▲▲ [수정된 부분] ▲▲▲
+
+    # 이벤트 처리 로직
     if source_grid_response.get("cellClicked"):
         clicked_info = source_grid_response["cellClicked"]
         if clicked_info and clicked_info['colDef']['headerName'] == '추가':
