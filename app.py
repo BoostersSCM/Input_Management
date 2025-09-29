@@ -1,7 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 from utils.db_functions import get_source_data, insert_receiving_data
 from datetime import date
 
@@ -16,9 +16,7 @@ if 'submission_list' not in st.session_state:
 # --- 데이터 로딩 ---
 @st.cache_data
 def load_data():
-    """ERP DB에서 입고 예정 데이터를 불러옵니다."""
     df = get_source_data()
-    # 날짜/시간 타입을 문자열로 명확하게 변환
     if '입고예정일' in df.columns:
         df['입고예정일'] = pd.to_datetime(df['입고예정일']).dt.strftime('%Y-%m-%d')
     return df
@@ -59,7 +57,7 @@ if selected_po:
     gb_source.configure_selection('multiple', use_checkbox=True)
     gridOptions_source = gb_source.build()
     source_grid_response = AgGrid(
-        source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True
+        source_grid_df, gridOptions=gridOptions_source, height=300, theme='streamlit', reload_data=True, key='source_grid'
     )
     selected_rows = source_grid_response["selected_rows"]
     if st.button("🔽 선택 항목을 아래 편집 리스트에 추가", disabled=len(selected_rows) == 0):
@@ -79,12 +77,37 @@ else:
 st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
+    
+    # --- JsCode로 자동 변환 함수 정의 ---
+    # 날짜 자동 변환 (YYYYMMDD -> YYYY-MM-DD)
+    date_parser = JsCode("""
+        function(params) {
+            var dateValue = params.newValue;
+            if (typeof dateValue === 'string' && dateValue.length === 8 && !isNaN(dateValue)) {
+                return dateValue.slice(0, 4) + '-' + dateValue.slice(4, 6) + '-' + dateValue.slice(6, 8);
+            }
+            return dateValue;
+        }
+    """)
+    # 대문자 자동 변환
+    uppercase_parser = JsCode("""
+        function(params) {
+            if (params.newValue && typeof params.newValue === 'string') {
+                return params.newValue.toUpperCase();
+            }
+            return params.newValue;
+        }
+    """)
+
     gb_submission = GridOptionsBuilder.from_dataframe(submission_df)
-    gb_submission.configure_column("버전", editable=True)
-    gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor')
-    gb_submission.configure_column("LOT", editable=True)
-    gb_submission.configure_column("유통기한", editable=True, cellEditor='agDateCellEditor')
-    gb_submission.configure_column("확정수량", editable=True, cellEditor='agNumberCellEditor')
+    
+    # 편집 가능한 컬럼에 자동 변환 함수 적용
+    gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
+    gb_submission.configure_column("입고일자", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
+    gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
+    gb_submission.configure_column("유통기한", editable=True, cellEditor='agDateCellEditor', valueParser=date_parser)
+    gb_submission.configure_column("확정수량", editable=True, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], precision=0)
+    
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
     
@@ -97,10 +120,8 @@ if not st.session_state.submission_list.empty:
         theme='streamlit',
         height=350,
         allow_unsafe_jscode=True,
-        # ▼▼▼ [수정된 부분] ▼▼▼
-        # 사용자가 입력을 멈춘 후 0.5초 뒤에 업데이트하여 즉각적인 새로고침 방지
-        debounce_ms=500
-        # ▲▲▲ [수정된 부분] ▲▲▲
+        debounce_ms=500, # 입력 중 새로고침 방지
+        key='submission_grid' # 그리드 상태 유지를 위한 고유 키
     )
     
     st.session_state.submission_list = submission_grid_response['data']
