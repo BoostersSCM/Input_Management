@@ -2,4 +2,6 @@
 streamlit
 pandas
 streamlit-aggrid
-pyodbc
+# pyodbc        <- 이 줄은 삭제하거나 주석 처리
+pymysql         # MySQL 연결용 라이브러리
+SQLAlchemy      # DB 연결을 더 쉽게 관리해주는 라이브러리
