@@ -72,7 +72,6 @@ if selected_po:
     st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 각 행의 '+' 버튼을 누르거나, 체크박스로 여러 항목을 선택 후 아래 버튼을 눌러 추가하세요.")
     source_grid_df = source_df[source_df['발주번호'] == selected_po].copy()
     
-    # '+' 버튼 렌더러 JsCode
     add_button_renderer = JsCode("""
         class ButtonRenderer {
             init(params) {
@@ -80,23 +79,15 @@ if selected_po:
                 this.eGui = document.createElement('button');
                 this.eGui.innerHTML = '+';
                 this.eGui.style.cssText = `
-                    background-color: transparent; 
-                    border: 1px solid green; 
-                    color: green; 
-                    cursor: pointer; 
-                    width: 100%; 
-                    height: 100%;
+                    background-color: transparent; border: 1px solid green; color: green; 
+                    cursor: pointer; width: 100%; height: 100%;
                 `;
                 this.eGui.addEventListener('click', () => this.buttonClicked());
             }
-            getGui() {
-                return this.eGui;
-            }
+            getGui() { return this.eGui; }
             buttonClicked() {
                 this.params.api.onCellClicked({
-                    colDef: { headerName: '추가' },
-                    data: this.params.data,
-                    node: this.params.node
+                    colDef: { headerName: '추가' }, data: this.params.data, node: this.params.node
                 });
             }
         }
@@ -104,7 +95,6 @@ if selected_po:
     
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
     gb_source.configure_selection('multiple', use_checkbox=True, header_checkbox=True)
-    # '추가' 컬럼을 만들고 '+' 버튼 렌더러 적용
     gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left')
     gridOptions_source = gb_source.build()
     
@@ -114,19 +104,19 @@ if selected_po:
         height=300, 
         theme='streamlit', 
         allow_unsafe_jscode=True,
-        # 셀 클릭 이벤트를 받기 위해 update_mode 설정
-        update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.CELL_CLICKED,
+        # ▼▼▼ [수정된 부분] ▼▼▼
+        # 그리드 내의 선택, 클릭 등 모든 변경사항을 감지하는 단일 모드로 변경
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        # ▲▲▲ [수정된 부분] ▲▲▲
         key='source_grid'
     )
     
-    # '+' 버튼 클릭 처리
     if source_grid_response.get("cellClicked"):
         clicked_info = source_grid_response["cellClicked"]
         if clicked_info and clicked_info['colDef']['headerName'] == '추가':
             clicked_row_df = pd.DataFrame([clicked_info['data']])
             add_to_submission_list(clicked_row_df)
 
-    # 다중 선택 후 추가 버튼
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
     if st.button("🔽 체크된 항목 모두 아래에 추가", disabled=selected_rows.empty):
         add_to_submission_list(selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore'))
@@ -142,8 +132,6 @@ if not st.session_state.submission_list.empty:
     display_columns = ['발주번호', '품번', '품명', '예정수량', '버전', '입고일자', 'LOT', '유통기한', '확정수량']
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
-    # --- JsCode로 자동 변환 함수 정의 ---
-    # 날짜 자동 변환 (YYYYMMDD -> YYYY-MM-DD)
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -153,7 +141,6 @@ if not st.session_state.submission_list.empty:
             return dateValue;
         }
     """)
-    # 대문자 자동 변환
     uppercase_parser = JsCode("""
         function(params) {
             if (params.newValue && typeof params.newValue === 'string') {
@@ -162,13 +149,10 @@ if not st.session_state.submission_list.empty:
             return params.newValue;
         }
     """)
-    # 숫자 자동 변환 (쉼표 제거 및 숫자로 파싱)
     number_parser = JsCode("""
         function(params) {
             var value = params.newValue;
-            if (value === null || value === undefined || value === '') {
-                return null;
-            }
+            if (value === null || value === undefined || value === '') { return null; }
             var numberValue = Number(String(value).replace(/,/g, ''));
             return isNaN(numberValue) ? params.oldValue : numberValue;
         }
