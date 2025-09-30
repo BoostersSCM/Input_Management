@@ -21,7 +21,7 @@ def load_data():
     if '입고예정일' in df.columns:
         df['입고예정일'] = pd.to_datetime(df['입고예정일']).dt.strftime('%Y-%m-%d')
     if '예정수량' in df.columns:
-        df['예정수량'] = pd.to_numeric(df['예정수량'], errors='coerce').fillna(0)
+        df['예정수량'] = pd.to_numeric(df['예정수량'], errors='coerce').fillna(0).astype(int)
     return df
 
 source_df = load_data()
@@ -44,6 +44,7 @@ def add_to_submission_list(items_df):
 # --- UI 섹션 ---
 st.header("1. 조회 조건 선택")
 
+# 1. 연쇄 드롭다운 선택 UI
 selected_po = None
 if not source_df.empty:
     brands = sorted(source_df['브랜드'].dropna().unique())
@@ -78,19 +79,20 @@ if selected_po:
                 this.eGui = document.createElement('button');
                 this.eGui.innerHTML = '+';
                 this.eGui.style.cssText = `
-                    background-color: transparent; 
-                    border: 1px solid green; 
-                    color: green; 
-                    cursor: pointer; 
-                    width: 100%; 
-                    height: 100%;
+                    background-color: transparent; border: 1px solid green; color: green; 
+                    cursor: pointer; width: 100%; height: 100%;
                 `;
-                this.eGui.addEventListener('click', () => {
-                    const event = new CustomEvent('cellClicked', { detail: this.params.data });
-                    window.dispatchEvent(event);
-                });
+                this.eGui.addEventListener('click', () => this.buttonClicked());
             }
             getGui() { return this.eGui; }
+            buttonClicked() {
+                // streamlitApi를 사용하여 Python으로 직접 데이터 전송 (가장 안정적인 방식)
+                this.params.api.context.streamlitApi.setComponentValue({
+                    type: "button_click",
+                    rowIndex: this.params.rowIndex,
+                    data: this.params.data
+                });
+            }
         }
     """)
     
@@ -105,14 +107,15 @@ if selected_po:
         height=300, 
         theme='streamlit', 
         allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        update_mode=GridUpdateMode.MANUAL, # 버튼 클릭 이벤트를 안정적으로 받기 위해 수동 모드로 변경
         key='source_grid'
     )
-
+    
     # '+' 버튼 클릭 이벤트 처리
-    if "cellClicked" in source_grid_response:
-        row_data = pd.DataFrame([source_grid_response["cellClicked"]])
-        add_to_submission_list(row_data)
+    if source_grid_response.get("component_value"):
+        event = source_grid_response["component_value"]
+        if event and event['type'] == 'button_click':
+            add_to_submission_list(pd.DataFrame([event['data']]))
 
     # 다중 선택 후 추가 버튼
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
@@ -130,7 +133,6 @@ if not st.session_state.submission_list.empty:
     display_columns = ['발주번호', '품번', '품명', '예정수량', '버전', '입고일자', 'LOT', '유통기한', '확정수량']
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
-    # --- JsCode로 자동 변환 함수 정의 ---
     date_parser = JsCode("""
         function(params) {
             var dateValue = params.newValue;
@@ -152,10 +154,10 @@ if not st.session_state.submission_list.empty:
         function(params) {
             var value = params.newValue;
             if (value === null || value === undefined || value === '') { 
-                return 0; 
+                return null; 
             }
             var numberValue = Number(String(value).replace(/,/g, ''));
-            return isNaN(numberValue) ? 0 : numberValue;
+            return isNaN(numberValue) ? params.oldValue : numberValue;
         }
     """)
     
@@ -171,18 +173,17 @@ if not st.session_state.submission_list.empty:
     gridOptions_submission = gb_submission.build()
     
     submission_grid_response = AgGrid(
-        submission_df_display, 
-        gridOptions=gridOptions_submission, 
-        data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.VALUE_CHANGED,   # ✅ 수정 포인트
-        fit_columns_on_grid_load=True, theme='streamlit',
+        submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
+        update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
         height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
         debounce_ms=200,
         key='submission_grid'
     )
     
+    # --- 데이터 타입 보정 로직 (핵심 수정) ---
     response_df = pd.DataFrame(submission_grid_response['data'])
     if not response_df.empty:
+        # '확정수량'과 '예정수량'을 항상 숫자로 유지하여 오류 방지
         response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
         response_df['예정수량'] = pd.to_numeric(response_df['예정수량'], errors='coerce').fillna(0).astype(int)
     
