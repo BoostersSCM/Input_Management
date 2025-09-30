@@ -93,62 +93,60 @@ if selected_po:
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
-# 3. (하단) 편집 및 최종 등록용 그리드 (st.data_editor)
+# 3. (하단) 편집 및 최종 등록용 그리드 (st.form으로 감싸서 안정성 확보)
 st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     
-    st.info("아래 표의 셀을 더블클릭하여 입고 정보를 직접 수정하세요. (엑셀처럼 복사/붙여넣기 가능)")
-    
-    # 표시할 컬럼 순서 및 읽기 전용 설정
-    column_order = [
-        '삭제', '발주번호', '품번', '품명', '버전', 
-        '입고일자', 'LOT', '유통기한', '확정수량'
-    ]
-    
-    # st.data_editor에 맞게 컬럼 설정
-    column_config = {
-        "발주번호": st.column_config.TextColumn(disabled=True),
-        "품번": st.column_config.TextColumn(disabled=True),
-        "품명": st.column_config.TextColumn(disabled=True),
-        "확정수량": st.column_config.NumberColumn(min_value=0, format="%d", required=True),
-        # '예정수량'은 DB 전송에 필요하지만 화면에는 보이지 않도록 숨김
-        "예정수량": None,
-    }
-
-    # data_editor를 호출하고, 그 결과를 즉시 edited_df에 저장
-    edited_df = st.data_editor(
-        st.session_state.submission_list,
-        column_order=column_order,
-        column_config=column_config,
-        hide_index=True,
-        num_rows="dynamic",
-        key='submission_editor'
-    )
-
-    # --- 버튼 및 상태 업데이트 로직 ---
-    col1, col2 = st.columns(2)
-    delete_button = col1.button("🗑️ 선택 항목 삭제")
-    clear_button = col2.button("✨ 리스트 비우기")
+    st.info("표 안에서 자유롭게 편집한 후, 반드시 '변경사항 저장' 버튼을 눌러야 수정 내용이 반영됩니다.")
     
     # ▼▼▼ [수정된 핵심 로직] ▼▼▼
-    # 버튼 액션에 따라 상태 업데이트를 명확하게 분리
-    if delete_button:
-        # '삭제'가 체크되지 않은 행만 남김
+    # st.form으로 data_editor와 버튼들을 감싸서 불필요한 재실행을 방지
+    with st.form(key="submission_form"):
+        
+        column_order = [
+            '삭제', '발주번호', '품번', '품명', '버전', 
+            '입고일자', 'LOT', '유통기한', '확정수량'
+        ]
+        
+        column_config = {
+            "발주번호": st.column_config.TextColumn(disabled=True),
+            "품번": st.column_config.TextColumn(disabled=True),
+            "품명": st.column_config.TextColumn(disabled=True),
+            "확정수량": st.column_config.NumberColumn(min_value=0, format="%d", required=True),
+            "예정수량": None,
+        }
+
+        # st.data_editor를 form 안에 배치
+        edited_df = st.data_editor(
+            st.session_state.submission_list,
+            column_order=column_order,
+            column_config=column_config,
+            hide_index=True,
+            num_rows="dynamic",
+            key='submission_editor'
+        )
+
+        # --- 버튼 섹션 ---
+        col1, col2 = st.columns(2)
+        # form 안에 있는 버튼은 st.form_submit_button 사용
+        save_button = col1.form_submit_button(label="🔄 변경사항 저장")
+        clear_button = col2.form_submit_button(label="✨ 리스트 비우기")
+
+    # form 제출 후의 로직 처리
+    if save_button:
+        # '삭제' 체크된 행 제거
         rows_to_keep = edited_df[edited_df['삭제'] == False]
         st.session_state.submission_list = rows_to_keep
+        st.success("변경사항이 저장되었습니다.")
         st.rerun()
-    elif clear_button:
+        
+    if clear_button:
         st.session_state.submission_list = pd.DataFrame()
         st.rerun()
-    else:
-        # 다른 버튼 액션이 없을 때만 data_editor의 변경사항을 session_state에 저장
-        # 이것이 값이 초기화되는 것을 막는 핵심 부분입니다.
-        st.session_state.submission_list = edited_df
     # ▲▲▲ [수정된 핵심 로직] ▲▲▲
             
     st.divider()
     if st.button("✅ 편집 리스트 전체 등록 및 DB 전송", type="primary"):
-        # 전송 전에는 항상 최신 session_state 사용
         final_df = st.session_state.submission_list.drop(columns=['삭제'], errors='ignore')
         
         if final_df['LOT'].str.strip().eq('').any():
