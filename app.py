@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import pandas as pd
-# JsCode는 상단 표의 '+' 버튼에만 사용되므로 그대로 둡니다.
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 from utils.db_functions import get_source_data, insert_receiving_data
 from datetime import date
@@ -32,7 +31,6 @@ def add_to_submission_list(items_df):
     """선택된 항목을 아래 편집 리스트에 추가하는 함수"""
     if not items_df.empty:
         new_items = items_df.copy()
-        # st.data_editor에서 사용할 삭제 체크박스 컬럼 추가
         new_items['삭제'] = False
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
@@ -101,13 +99,11 @@ if not st.session_state.submission_list.empty:
     
     st.info("아래 표의 셀을 더블클릭하여 입고 정보를 직접 수정하세요. (엑셀처럼 복사/붙여넣기 가능)")
     
-    # 표시할 컬럼 순서 및 읽기 전용 설정
     column_order = [
         '삭제', '발주번호', '품번', '품명', '버전', 
         '입고일자', 'LOT', '유통기한', '확정수량'
     ]
     
-    # st.data_editor에 맞게 컬럼 설정
     column_config = {
         "발주번호": st.column_config.TextColumn(disabled=True),
         "품번": st.column_config.TextColumn(disabled=True),
@@ -115,41 +111,54 @@ if not st.session_state.submission_list.empty:
         "확정수량": st.column_config.NumberColumn(min_value=0, format="%d")
     }
 
-    # st.data_editor를 사용하여 편집 가능한 표 생성
     edited_df = st.data_editor(
         st.session_state.submission_list,
         column_order=column_order,
         column_config=column_config,
         hide_index=True,
-        num_rows="dynamic", # 이 옵션을 사용하면 행 추가/삭제도 가능하지만, 여기서는 편집만 사용
+        num_rows="dynamic",
         key='submission_editor'
     )
 
-    # 편집된 내용을 세션 상태에 즉시 저장
-    st.session_state.submission_list = edited_df
-
-    # --- 버튼 섹션 ---
+    # --- 버튼 및 상태 업데이트 로직 ---
     col1, col2 = st.columns(2)
-    with col1:
-        # '삭제' 체크박스가 선택된 행을 제거하는 로직
-        if st.button("🗑️ 선택 항목 삭제"):
-            if '삭제' in edited_df.columns:
-                st.session_state.submission_list = edited_df[edited_df['삭제'] == False]
-                st.rerun()
-    with col2:
-        if st.button("✨ 리스트 비우기"):
-            st.session_state.submission_list = pd.DataFrame()
+    delete_button = col1.button("🗑️ 선택 항목 삭제")
+    clear_button = col2.button("✨ 리스트 비우기")
+    
+    # ▼▼▼ [수정된 부분] ▼▼▼
+    # 버튼 액션에 따라 상태 업데이트를 명확하게 분리
+    if delete_button:
+        if '삭제' in edited_df.columns:
+            rows_to_keep = edited_df[edited_df['삭제'] == False]
+            st.session_state.submission_list = rows_to_keep
             st.rerun()
+    elif clear_button:
+        st.session_state.submission_list = pd.DataFrame()
+        st.rerun()
+    else:
+        # 다른 버튼 액션이 없을 때만 data_editor의 변경사항을 session_state에 저장
+        st.session_state.submission_list = edited_df
+    # ▲▲▲ [수정된 부분] ▲▲▲
             
     st.divider()
     if st.button("✅ 편집 리스트 전체 등록 및 DB 전송", type="primary"):
-        final_df = st.session_state.submission_list.drop(columns=['삭제'], errors='ignore') # DB 전송 전 '삭제' 컬럼 제외
+        final_df = st.session_state.submission_list.drop(columns=['삭제'], errors='ignore')
         
         if final_df['LOT'].str.strip().eq('').any():
             st.error("⚠️ LOT 번호는 모든 품목에 대해 필수 입력 항목입니다.")
         else:
             with st.spinner('데이터를 DB에 저장하는 중입니다...'):
                 data_to_submit = final_df.to_dict('records')
+                # DB 전송 전 '예정수량' 컬럼 추가 (DB 스키마에 맞게)
+                if '예정수량' not in data_to_submit[0] and '예정수량' in source_df.columns:
+                    # 원본 데이터에서 예정수량 찾아오기
+                    merged_df = pd.DataFrame(data_to_submit).merge(
+                        source_df[['발주번호', '품번', '버전', '예정수량']].drop_duplicates(),
+                        on=['발주번호', '품번', '버전'],
+                        how='left'
+                    )
+                    data_to_submit = merged_df.to_dict('records')
+
                 success, message = insert_receiving_data(data_to_submit)
                 
                 if success:
