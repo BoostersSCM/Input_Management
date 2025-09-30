@@ -34,7 +34,7 @@ def add_to_submission_list(items_df):
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
         new_items['유통기한'] = ''
-        new_items['확정수량'] = 0
+        new_items['확정수량'] = 0  # 기본값 0으로 설정
         
         current_list = st.session_state.submission_list
         combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
@@ -79,15 +79,23 @@ if selected_po:
                 this.eGui = document.createElement('button');
                 this.eGui.innerHTML = '+';
                 this.eGui.style.cssText = `
-                    background-color: transparent; border: 1px solid green; color: green; 
-                    cursor: pointer; width: 100%; height: 100%;
+                    background-color: transparent; 
+                    border: 1px solid green; 
+                    color: green; 
+                    cursor: pointer; 
+                    width: 100%; 
+                    height: 100%;
                 `;
                 this.eGui.addEventListener('click', () => this.buttonClicked());
             }
             getGui() { return this.eGui; }
             buttonClicked() {
-                this.params.api.onCellClicked({
-                    colDef: { headerName: '추가' }, data: this.params.data, node: this.params.node
+                // streamlitApi를 사용하여 Python으로 직접 데이터 전송
+                this.params.api.context.streamlitApi.setComponentValue({
+                    type: "cellClicked",
+                    colId: "추가_버튼",
+                    rowIndex: this.params.rowIndex,
+                    data: this.params.data
                 });
             }
         }
@@ -95,12 +103,7 @@ if selected_po:
     
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
     gb_source.configure_selection('multiple', use_checkbox=True, header_checkbox=True)
-    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left', onCellClicked=JsCode("""
-        function(e) {
-            let api = e.api;
-            api.onCellClicked(e);
-        }
-    """))
+    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left', colId="추가_버튼")
     gridOptions_source = gb_source.build()
     
     source_grid_response = AgGrid(
@@ -109,15 +112,17 @@ if selected_po:
         height=300, 
         theme='streamlit', 
         allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.MODEL_CHANGED,
+        update_mode=GridUpdateMode.MANUAL, # 버튼 클릭 이벤트를 안정적으로 받기 위해 수동 모드로 변경
         key='source_grid'
     )
     
-    if source_grid_response.get("cellClicked"):
-        clicked_info = source_grid_response["cellClicked"]
-        if clicked_info and clicked_info['colDef']['headerName'] == '추가':
-            add_to_submission_list(pd.DataFrame([clicked_info['data']]))
+    # '+' 버튼 클릭 처리
+    if source_grid_response.get("component_value"):
+        event = source_grid_response["component_value"]
+        if event and event['type'] == 'cellClicked' and event['colId'] == '추가_버튼':
+            add_to_submission_list(pd.DataFrame([event['data']]))
 
+    # 다중 선택 후 추가 버튼
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
     if st.button("🔽 체크된 항목 모두 아래에 추가", disabled=selected_rows.empty):
         add_to_submission_list(selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore'))
@@ -177,12 +182,14 @@ if not st.session_state.submission_list.empty:
         submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
         update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
         height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
-        debounce_ms=500, key='submission_grid'
+        debounce_ms=200,
+        key='submission_grid'
     )
     
     response_df = pd.DataFrame(submission_grid_response['data'])
     if not response_df.empty:
         response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
+        response_df['예정수량'] = pd.to_numeric(response_df['예정수량'], errors='coerce').fillna(0).astype(int)
     
     st.session_state.submission_list = response_df
 
