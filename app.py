@@ -34,14 +34,9 @@ def add_to_submission_list(items_df):
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
         new_items['유통기한'] = ''
-        new_items['확정수량'] = 0
+        new_items['확정수량'] = 0  # 기본값 0으로 설정
         
         current_list = st.session_state.submission_list
-        # 숫자 타입 일관성 유지
-        for col in ['예정수량', '확정수량']:
-            if col in current_list.columns:
-                current_list[col] = pd.to_numeric(current_list[col], errors='coerce').fillna(0).astype(int)
-        
         combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
         st.session_state.submission_list = combined_list
         st.rerun()
@@ -84,12 +79,8 @@ if selected_po:
                 this.eGui = document.createElement('button');
                 this.eGui.innerHTML = '+';
                 this.eGui.style.cssText = `
-                    background-color: transparent; 
-                    border: 1px solid green; 
-                    color: green; 
-                    cursor: pointer; 
-                    width: 100%; 
-                    height: 100%;
+                    background-color: transparent; border: 1px solid green; color: green; 
+                    cursor: pointer; width: 100%; height: 100%;
                 `;
                 this.eGui.addEventListener('click', () => this.buttonClicked());
             }
@@ -114,8 +105,8 @@ if selected_po:
         gridOptions=gridOptions_source, 
         height=300, 
         theme='streamlit', 
-        allow_unsafe_jscode=True, 
-        update_mode=GridUpdateMode.MANUAL, 
+        allow_unsafe_jscode=True,
+        update_mode=GridUpdateMode.MANUAL,
         key='source_grid'
     )
     
@@ -136,7 +127,10 @@ st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     submission_df = st.session_state.submission_list
     
-    display_columns = ['발주번호', '품번', '품명', '예정수량', '버전', '입고일자', 'LOT', '유통기한', '확정수량']
+    # ▼▼▼ [수정된 부분 1] ▼▼▼
+    # 표시할 컬럼에서 '예정수량'을 제거
+    display_columns = ['발주번호', '품번', '품명', '버전', '입고일자', 'LOT', '유통기한', '확정수량']
+    # ▲▲▲ [수정된 부분 1] ▲▲▲
     submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
 
     date_parser = JsCode("""
@@ -174,44 +168,36 @@ if not st.session_state.submission_list.empty:
     gb_submission.configure_column("유통기한", editable=True, valueParser=date_parser)
     gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
     gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0, valueParser=number_parser)
-    gb_submission.configure_column("예정수량", type=["numericColumn"], precision=0)
+    # 예정수량 컬럼은 더 이상 표시되지 않으므로 해당 설정 라인 삭제
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
-
-    st.info("표 안에서 자유롭게 편집한 후, 반드시 '표 변경사항 적용' 버튼을 눌러야 수정 내용이 저장됩니다.")
-    apply_changes = st.button("🔄 표 변경사항 적용")
     
     submission_grid_response = AgGrid(
-        submission_df_display, 
-        gridOptions=gridOptions_submission, 
-        data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MANUAL,
-        reload_data=apply_changes,
-        fit_columns_on_grid_load=True, 
-        theme='streamlit',
-        height=350, 
-        allow_unsafe_jscode=True, 
-        enable_enterprise_modules=True, 
+        submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
+        update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
+        height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
+        debounce_ms=200,
         key='submission_grid'
     )
     
-    if apply_changes:
-        response_df = pd.DataFrame(submission_grid_response['data'])
-        if not response_df.empty:
-            response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
-            response_df['예정수량'] = pd.to_numeric(response_df['예정수량'], errors='coerce').fillna(0).astype(int)
-        st.session_state.submission_list = response_df
-        st.rerun()
+    # ▼▼▼ [수정된 부분 2] ▼▼▼
+    # AG Grid에서 받은 데이터를 바로 session_state에 저장하기 전에 데이터 타입을 강제로 변환
+    response_df = pd.DataFrame(submission_grid_response['data'])
+    if not response_df.empty:
+        # '확정수량' 컬럼이 숫자 형식이 아니면 숫자로 변환하고, 변환 불가능한 값은 0으로 처리
+        response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
+    
+    # 원본 데이터프레임(submission_df)의 인덱스를 사용하여 업데이트
+    st.session_state.submission_list.update(response_df)
+    # ▲▲▲ [수정된 부분 2] ▲▲▲
 
     selected_submission_rows = pd.DataFrame(submission_grid_response["selected_rows"])
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns([2, 2, 8])
     with col1:
         if st.button("선택 항목 삭제", disabled=selected_submission_rows.empty):
             indices_to_drop = selected_submission_rows.index
-            current_df = st.session_state.submission_list
-            current_df = current_df.drop(indices_to_drop).reset_index(drop=True)
-            st.session_state.submission_list = current_df
+            st.session_state.submission_list = st.session_state.submission_list.drop(indices_to_drop).reset_index(drop=True)
             st.rerun()
     with col2:
         if st.button("리스트 비우기"):
