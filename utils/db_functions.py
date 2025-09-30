@@ -56,7 +56,11 @@ def get_source_data():
                 ON
                     ei.itemno = niid.product_code
                 WHERE
-                    nii.intended_push_date >= CURDATE() AND nii.is_delete = 0
+                    -- ▼▼▼ [수정된 부분] ▼▼▼
+                    -- 입고 예정일이 오늘 기준으로 7일 전까지인 데이터만 조회하도록 변경
+                    nii.intended_push_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) 
+                    AND nii.is_delete = 0
+                    -- ▲▲▲ [수정된 부분] ▲▲▲
                 GROUP BY 
                     브랜드,
                     nii.intended_push_date,
@@ -80,18 +84,13 @@ def insert_receiving_data(data_list):
         try:
             df_to_insert = pd.DataFrame(data_list)
             
-            df_to_insert['확정일'] = pd.to_datetime('today').normalize()
-            
-            # ▼▼▼ [수정된 부분] ▼▼▼
-            # DB에 전송하기 직전, DataFrame의 '예정수량' 컬럼명을 '입고 예정수량'으로 변경
             df_to_insert.rename(columns={'예정수량': '입고 예정수량'}, inplace=True)
-            
-            # DB 테이블 스키마와 정확히 일치하도록 전송할 컬럼 리스트를 수정
+            df_to_insert['확정일'] = pd.to_datetime('today').normalize()
+
             final_columns = [
                 '입고일자', '발주번호', '품번', '품명', '버전', 
                 'LOT', '유통기한', '확정수량', '확정일', '입고 예정수량'
             ]
-            # ▲▲▲ [수정된 부분] ▲▲▲
 
             for col in final_columns:
                 if col not in df_to_insert.columns:
