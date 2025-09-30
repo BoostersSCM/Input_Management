@@ -34,9 +34,14 @@ def add_to_submission_list(items_df):
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
         new_items['유통기한'] = ''
-        new_items['확정수량'] = 0  # 기본값 0으로 설정
+        new_items['확정수량'] = 0
         
         current_list = st.session_state.submission_list
+        # 숫자 타입 일관성 유지
+        for col in ['예정수량', '확정수량']:
+            if col in current_list.columns:
+                current_list[col] = pd.to_numeric(current_list[col], errors='coerce').fillna(0).astype(int)
+        
         combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
         st.session_state.submission_list = combined_list
         st.rerun()
@@ -79,14 +84,17 @@ if selected_po:
                 this.eGui = document.createElement('button');
                 this.eGui.innerHTML = '+';
                 this.eGui.style.cssText = `
-                    background-color: transparent; border: 1px solid green; color: green; 
-                    cursor: pointer; width: 100%; height: 100%;
+                    background-color: transparent; 
+                    border: 1px solid green; 
+                    color: green; 
+                    cursor: pointer; 
+                    width: 100%; 
+                    height: 100%;
                 `;
                 this.eGui.addEventListener('click', () => this.buttonClicked());
             }
             getGui() { return this.eGui; }
             buttonClicked() {
-                // streamlitApi를 사용하여 Python으로 직접 데이터 전송 (가장 안정적인 방식)
                 this.params.api.context.streamlitApi.setComponentValue({
                     type: "button_click",
                     rowIndex: this.params.rowIndex,
@@ -106,18 +114,16 @@ if selected_po:
         gridOptions=gridOptions_source, 
         height=300, 
         theme='streamlit', 
-        allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.MANUAL, # 버튼 클릭 이벤트를 안정적으로 받기 위해 수동 모드로 변경
+        allow_unsafe_jscode=True, 
+        update_mode=GridUpdateMode.MANUAL, 
         key='source_grid'
     )
     
-    # '+' 버튼 클릭 이벤트 처리
     if source_grid_response.get("component_value"):
         event = source_grid_response["component_value"]
         if event and event['type'] == 'button_click':
             add_to_submission_list(pd.DataFrame([event['data']]))
 
-    # 다중 선택 후 추가 버튼
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
     if st.button("🔽 체크된 항목 모두 아래에 추가", disabled=selected_rows.empty):
         add_to_submission_list(selected_rows.drop(columns=['_selectedRowNodeInfo'], errors='ignore'))
@@ -171,31 +177,41 @@ if not st.session_state.submission_list.empty:
     gb_submission.configure_column("예정수량", type=["numericColumn"], precision=0)
     gb_submission.configure_selection('multiple', use_checkbox=True)
     gridOptions_submission = gb_submission.build()
+
+    st.info("표 안에서 자유롭게 편집한 후, 반드시 '표 변경사항 적용' 버튼을 눌러야 수정 내용이 저장됩니다.")
+    apply_changes = st.button("🔄 표 변경사항 적용")
     
     submission_grid_response = AgGrid(
-        submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
-        height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
-        debounce_ms=200,
+        submission_df_display, 
+        gridOptions=gridOptions_submission, 
+        data_return_mode=DataReturnMode.AS_INPUT,
+        update_mode=GridUpdateMode.MANUAL,
+        reload_data=apply_changes,
+        fit_columns_on_grid_load=True, 
+        theme='streamlit',
+        height=350, 
+        allow_unsafe_jscode=True, 
+        enable_enterprise_modules=True, 
         key='submission_grid'
     )
     
-    # --- 데이터 타입 보정 로직 (핵심 수정) ---
-    response_df = pd.DataFrame(submission_grid_response['data'])
-    if not response_df.empty:
-        # '확정수량'과 '예정수량'을 항상 숫자로 유지하여 오류 방지
-        response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
-        response_df['예정수량'] = pd.to_numeric(response_df['예정수량'], errors='coerce').fillna(0).astype(int)
-    
-    st.session_state.submission_list = response_df
+    if apply_changes:
+        response_df = pd.DataFrame(submission_grid_response['data'])
+        if not response_df.empty:
+            response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
+            response_df['예정수량'] = pd.to_numeric(response_df['예정수량'], errors='coerce').fillna(0).astype(int)
+        st.session_state.submission_list = response_df
+        st.rerun()
 
     selected_submission_rows = pd.DataFrame(submission_grid_response["selected_rows"])
     
-    col1, col2, col3 = st.columns([2, 2, 8])
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("선택 항목 삭제", disabled=selected_submission_rows.empty):
             indices_to_drop = selected_submission_rows.index
-            st.session_state.submission_list = st.session_state.submission_list.drop(indices_to_drop).reset_index(drop=True)
+            current_df = st.session_state.submission_list
+            current_df = current_df.drop(indices_to_drop).reset_index(drop=True)
+            st.session_state.submission_list = current_df
             st.rerun()
     with col2:
         if st.button("리스트 비우기"):
