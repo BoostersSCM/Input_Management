@@ -1,7 +1,8 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
+# JsCode는 상단 표의 '+' 버튼에만 사용되므로 그대로 둡니다.
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 from utils.db_functions import get_source_data, insert_receiving_data
 from datetime import date
 
@@ -31,10 +32,12 @@ def add_to_submission_list(items_df):
     """선택된 항목을 아래 편집 리스트에 추가하는 함수"""
     if not items_df.empty:
         new_items = items_df.copy()
+        # st.data_editor에서 사용할 삭제 체크박스 컬럼 추가
+        new_items['삭제'] = False
         new_items['입고일자'] = date.today().strftime("%Y-%m-%d")
         new_items['LOT'] = ''
         new_items['유통기한'] = ''
-        new_items['확정수량'] = 0  # 기본값 0으로 설정
+        new_items['확정수량'] = 0
         
         current_list = st.session_state.submission_list
         combined_list = pd.concat([current_list, new_items]).reset_index(drop=True)
@@ -69,51 +72,21 @@ else:
 # 2. (상단) 참고용 그리드
 st.header("2. 입고 예정 품목 선택")
 if selected_po:
-    st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 각 행의 '+' 버튼을 누르거나, 체크박스로 여러 항목을 선택 후 아래 버튼을 눌러 추가하세요.")
+    st.info(f"**'{selected_po}'** 발주 건의 품목 리스트입니다. 체크박스로 추가할 항목을 선택하세요.")
     source_grid_df = source_df[source_df['발주번호'] == selected_po].copy()
-    
-    add_button_renderer = JsCode("""
-        class ButtonRenderer {
-            init(params) {
-                this.params = params;
-                this.eGui = document.createElement('button');
-                this.eGui.innerHTML = '+';
-                this.eGui.style.cssText = `
-                    background-color: transparent; border: 1px solid green; color: green; 
-                    cursor: pointer; width: 100%; height: 100%;
-                `;
-                this.eGui.addEventListener('click', () => this.buttonClicked());
-            }
-            getGui() { return this.eGui; }
-            buttonClicked() {
-                this.params.api.context.streamlitApi.setComponentValue({
-                    type: "button_click",
-                    rowIndex: this.params.rowIndex,
-                    data: this.params.data
-                });
-            }
-        }
-    """)
     
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
     gb_source.configure_selection('multiple', use_checkbox=True, header_checkbox=True)
-    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left')
     gridOptions_source = gb_source.build()
     
     source_grid_response = AgGrid(
         source_grid_df, 
         gridOptions=gridOptions_source, 
         height=300, 
-        theme='streamlit', 
-        allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.MANUAL,
+        theme='streamlit',
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
         key='source_grid'
     )
-    
-    if source_grid_response.get("component_value"):
-        event = source_grid_response["component_value"]
-        if event and event['type'] == 'button_click':
-            add_to_submission_list(pd.DataFrame([event['data']]))
 
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
     if st.button("🔽 체크된 항목 모두 아래에 추가", disabled=selected_rows.empty):
@@ -122,91 +95,56 @@ if selected_po:
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
-# 3. (하단) 편집 및 최종 등록용 그리드
+# 3. (하단) 편집 및 최종 등록용 그리드 (st.data_editor로 변경)
 st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
-    submission_df = st.session_state.submission_list
     
-    # ▼▼▼ [수정된 부분 1] ▼▼▼
-    # 표시할 컬럼에서 '예정수량'을 제거
-    display_columns = ['발주번호', '품번', '품명', '버전', '입고일자', 'LOT', '유통기한', '확정수량']
-    # ▲▲▲ [수정된 부분 1] ▲▲▲
-    submission_df_display = submission_df[[col for col in display_columns if col in submission_df.columns]]
+    st.info("아래 표의 셀을 더블클릭하여 입고 정보를 직접 수정하세요. (엑셀처럼 복사/붙여넣기 가능)")
+    
+    # 표시할 컬럼 순서 및 읽기 전용 설정
+    column_order = [
+        '삭제', '발주번호', '품번', '품명', '버전', 
+        '입고일자', 'LOT', '유통기한', '확정수량'
+    ]
+    
+    # st.data_editor에 맞게 컬럼 설정
+    column_config = {
+        "발주번호": st.column_config.TextColumn(disabled=True),
+        "품번": st.column_config.TextColumn(disabled=True),
+        "품명": st.column_config.TextColumn(disabled=True),
+        "확정수량": st.column_config.NumberColumn(min_value=0, format="%d")
+    }
 
-    date_parser = JsCode("""
-        function(params) {
-            var dateValue = params.newValue;
-            if (typeof dateValue === 'string' && dateValue.length === 8 && !isNaN(dateValue)) {
-                return dateValue.slice(0, 4) + '-' + dateValue.slice(4, 6) + '-' + dateValue.slice(6, 8);
-            }
-            return dateValue;
-        }
-    """)
-    uppercase_parser = JsCode("""
-        function(params) {
-            if (params.newValue && typeof params.newValue === 'string') {
-                return params.newValue.toUpperCase();
-            }
-            return params.newValue;
-        }
-    """)
-    number_parser = JsCode("""
-        function(params) {
-            var value = params.newValue;
-            if (value === null || value === undefined || value === '') { 
-                return null; 
-            }
-            var numberValue = Number(String(value).replace(/,/g, ''));
-            return isNaN(numberValue) ? params.oldValue : numberValue;
-        }
-    """)
-    
-    gb_submission = GridOptionsBuilder.from_dataframe(submission_df_display)
-    gb_submission.configure_grid_options(enableRangeSelection=True)
-    gb_submission.configure_column("버전", editable=True, valueParser=uppercase_parser)
-    gb_submission.configure_column("입고일자", editable=True, valueParser=date_parser)
-    gb_submission.configure_column("유통기한", editable=True, valueParser=date_parser)
-    gb_submission.configure_column("LOT", editable=True, valueParser=uppercase_parser)
-    gb_submission.configure_column("확정수량", editable=True, type=["numericColumn"], precision=0, valueParser=number_parser)
-    # 예정수량 컬럼은 더 이상 표시되지 않으므로 해당 설정 라인 삭제
-    gb_submission.configure_selection('multiple', use_checkbox=True)
-    gridOptions_submission = gb_submission.build()
-    
-    submission_grid_response = AgGrid(
-        submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
-        height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
-        debounce_ms=200,
-        key='submission_grid'
+    # st.data_editor를 사용하여 편집 가능한 표 생성
+    edited_df = st.data_editor(
+        st.session_state.submission_list,
+        column_order=column_order,
+        column_config=column_config,
+        hide_index=True,
+        num_rows="dynamic", # 이 옵션을 사용하면 행 추가/삭제도 가능하지만, 여기서는 편집만 사용
+        key='submission_editor'
     )
-    
-    # ▼▼▼ [수정된 부분 2] ▼▼▼
-    # AG Grid에서 받은 데이터를 바로 session_state에 저장하기 전에 데이터 타입을 강제로 변환
-    response_df = pd.DataFrame(submission_grid_response['data'])
-    if not response_df.empty:
-        # '확정수량' 컬럼이 숫자 형식이 아니면 숫자로 변환하고, 변환 불가능한 값은 0으로 처리
-        response_df['확정수량'] = pd.to_numeric(response_df['확정수량'], errors='coerce').fillna(0).astype(int)
-    
-    # 원본 데이터프레임(submission_df)의 인덱스를 사용하여 업데이트
-    st.session_state.submission_list.update(response_df)
-    # ▲▲▲ [수정된 부분 2] ▲▲▲
 
-    selected_submission_rows = pd.DataFrame(submission_grid_response["selected_rows"])
-    
-    col1, col2, col3 = st.columns([2, 2, 8])
+    # 편집된 내용을 세션 상태에 즉시 저장
+    st.session_state.submission_list = edited_df
+
+    # --- 버튼 섹션 ---
+    col1, col2 = st.columns(2)
     with col1:
-        if st.button("선택 항목 삭제", disabled=selected_submission_rows.empty):
-            indices_to_drop = selected_submission_rows.index
-            st.session_state.submission_list = st.session_state.submission_list.drop(indices_to_drop).reset_index(drop=True)
-            st.rerun()
+        # '삭제' 체크박스가 선택된 행을 제거하는 로직
+        if st.button("🗑️ 선택 항목 삭제"):
+            if '삭제' in edited_df.columns:
+                st.session_state.submission_list = edited_df[edited_df['삭제'] == False]
+                st.rerun()
     with col2:
-        if st.button("리스트 비우기"):
+        if st.button("✨ 리스트 비우기"):
             st.session_state.submission_list = pd.DataFrame()
             st.rerun()
             
     st.divider()
     if st.button("✅ 편집 리스트 전체 등록 및 DB 전송", type="primary"):
-        final_df = st.session_state.submission_list
+        final_df = st.session_state.submission_list.drop(columns=['삭제'], errors='ignore') # DB 전송 전 '삭제' 컬럼 제외
+        
         if final_df['LOT'].str.strip().eq('').any():
             st.error("⚠️ LOT 번호는 모든 품목에 대해 필수 입력 항목입니다.")
         else:
