@@ -44,7 +44,6 @@ def add_to_submission_list(items_df):
 # --- UI 섹션 ---
 st.header("1. 조회 조건 선택")
 
-# 1. 연쇄 드롭다운 선택 UI
 selected_po = None
 if not source_df.empty:
     brands = sorted(source_df['브랜드'].dropna().unique())
@@ -86,24 +85,18 @@ if selected_po:
                     width: 100%; 
                     height: 100%;
                 `;
-                this.eGui.addEventListener('click', () => this.buttonClicked());
-            }
-            getGui() { return this.eGui; }
-            buttonClicked() {
-                // streamlitApi를 사용하여 Python으로 직접 데이터 전송
-                this.params.api.context.streamlitApi.setComponentValue({
-                    type: "cellClicked",
-                    colId: "추가_버튼",
-                    rowIndex: this.params.rowIndex,
-                    data: this.params.data
+                this.eGui.addEventListener('click', () => {
+                    const event = new CustomEvent('cellClicked', { detail: this.params.data });
+                    window.dispatchEvent(event);
                 });
             }
+            getGui() { return this.eGui; }
         }
     """)
     
     gb_source = GridOptionsBuilder.from_dataframe(source_grid_df)
     gb_source.configure_selection('multiple', use_checkbox=True, header_checkbox=True)
-    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left', colId="추가_버튼")
+    gb_source.configure_column("추가", cellRenderer=add_button_renderer, width=80, headerName="", pinned='left')
     gridOptions_source = gb_source.build()
     
     source_grid_response = AgGrid(
@@ -112,15 +105,14 @@ if selected_po:
         height=300, 
         theme='streamlit', 
         allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.MANUAL, # 버튼 클릭 이벤트를 안정적으로 받기 위해 수동 모드로 변경
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
         key='source_grid'
     )
-    
-    # '+' 버튼 클릭 처리
-    if source_grid_response.get("component_value"):
-        event = source_grid_response["component_value"]
-        if event and event['type'] == 'cellClicked' and event['colId'] == '추가_버튼':
-            add_to_submission_list(pd.DataFrame([event['data']]))
+
+    # '+' 버튼 클릭 이벤트 처리
+    if "cellClicked" in source_grid_response:
+        row_data = pd.DataFrame([source_grid_response["cellClicked"]])
+        add_to_submission_list(row_data)
 
     # 다중 선택 후 추가 버튼
     selected_rows = pd.DataFrame(source_grid_response["selected_rows"])
@@ -160,10 +152,10 @@ if not st.session_state.submission_list.empty:
         function(params) {
             var value = params.newValue;
             if (value === null || value === undefined || value === '') { 
-                return null; 
+                return 0; 
             }
             var numberValue = Number(String(value).replace(/,/g, ''));
-            return isNaN(numberValue) ? params.oldValue : numberValue;
+            return isNaN(numberValue) ? 0 : numberValue;
         }
     """)
     
@@ -179,8 +171,11 @@ if not st.session_state.submission_list.empty:
     gridOptions_submission = gb_submission.build()
     
     submission_grid_response = AgGrid(
-        submission_df_display, gridOptions=gridOptions_submission, data_return_mode=DataReturnMode.AS_INPUT,
-        update_mode=GridUpdateMode.MODEL_CHANGED, fit_columns_on_grid_load=True, theme='streamlit',
+        submission_df_display, 
+        gridOptions=gridOptions_submission, 
+        data_return_mode=DataReturnMode.AS_INPUT,
+        update_mode=GridUpdateMode.VALUE_CHANGED,   # ✅ 수정 포인트
+        fit_columns_on_grid_load=True, theme='streamlit',
         height=350, allow_unsafe_jscode=True, enable_enterprise_modules=True, 
         debounce_ms=200,
         key='submission_grid'
