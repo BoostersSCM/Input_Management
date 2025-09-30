@@ -1,7 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
 from utils.db_functions import get_source_data, insert_receiving_data
 from datetime import date
 
@@ -93,24 +93,29 @@ if selected_po:
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
-# 3. (하단) 편집 및 최종 등록용 그리드 (st.data_editor로 변경)
+# 3. (하단) 편집 및 최종 등록용 그리드 (st.data_editor)
 st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     
     st.info("아래 표의 셀을 더블클릭하여 입고 정보를 직접 수정하세요. (엑셀처럼 복사/붙여넣기 가능)")
     
+    # 표시할 컬럼 순서 및 읽기 전용 설정
     column_order = [
         '삭제', '발주번호', '품번', '품명', '버전', 
         '입고일자', 'LOT', '유통기한', '확정수량'
     ]
     
+    # st.data_editor에 맞게 컬럼 설정
     column_config = {
         "발주번호": st.column_config.TextColumn(disabled=True),
         "품번": st.column_config.TextColumn(disabled=True),
         "품명": st.column_config.TextColumn(disabled=True),
-        "확정수량": st.column_config.NumberColumn(min_value=0, format="%d")
+        "확정수량": st.column_config.NumberColumn(min_value=0, format="%d", required=True),
+        # '예정수량'은 DB 전송에 필요하지만 화면에는 보이지 않도록 숨김
+        "예정수량": None,
     }
 
+    # data_editor를 호출하고, 그 결과를 즉시 edited_df에 저장
     edited_df = st.data_editor(
         st.session_state.submission_list,
         column_order=column_order,
@@ -125,23 +130,25 @@ if not st.session_state.submission_list.empty:
     delete_button = col1.button("🗑️ 선택 항목 삭제")
     clear_button = col2.button("✨ 리스트 비우기")
     
-    # ▼▼▼ [수정된 부분] ▼▼▼
+    # ▼▼▼ [수정된 핵심 로직] ▼▼▼
     # 버튼 액션에 따라 상태 업데이트를 명확하게 분리
     if delete_button:
-        if '삭제' in edited_df.columns:
-            rows_to_keep = edited_df[edited_df['삭제'] == False]
-            st.session_state.submission_list = rows_to_keep
-            st.rerun()
+        # '삭제'가 체크되지 않은 행만 남김
+        rows_to_keep = edited_df[edited_df['삭제'] == False]
+        st.session_state.submission_list = rows_to_keep
+        st.rerun()
     elif clear_button:
         st.session_state.submission_list = pd.DataFrame()
         st.rerun()
     else:
         # 다른 버튼 액션이 없을 때만 data_editor의 변경사항을 session_state에 저장
+        # 이것이 값이 초기화되는 것을 막는 핵심 부분입니다.
         st.session_state.submission_list = edited_df
-    # ▲▲▲ [수정된 부분] ▲▲▲
+    # ▲▲▲ [수정된 핵심 로직] ▲▲▲
             
     st.divider()
     if st.button("✅ 편집 리스트 전체 등록 및 DB 전송", type="primary"):
+        # 전송 전에는 항상 최신 session_state 사용
         final_df = st.session_state.submission_list.drop(columns=['삭제'], errors='ignore')
         
         if final_df['LOT'].str.strip().eq('').any():
@@ -149,16 +156,6 @@ if not st.session_state.submission_list.empty:
         else:
             with st.spinner('데이터를 DB에 저장하는 중입니다...'):
                 data_to_submit = final_df.to_dict('records')
-                # DB 전송 전 '예정수량' 컬럼 추가 (DB 스키마에 맞게)
-                if '예정수량' not in data_to_submit[0] and '예정수량' in source_df.columns:
-                    # 원본 데이터에서 예정수량 찾아오기
-                    merged_df = pd.DataFrame(data_to_submit).merge(
-                        source_df[['발주번호', '품번', '버전', '예정수량']].drop_duplicates(),
-                        on=['발주번호', '품번', '버전'],
-                        how='left'
-                    )
-                    data_to_submit = merged_df.to_dict('records')
-
                 success, message = insert_receiving_data(data_to_submit)
                 
                 if success:
