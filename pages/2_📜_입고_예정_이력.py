@@ -27,13 +27,15 @@ else:
     col1, col2 = st.columns(2)
     
     with col1:
-        # 브랜드 필터
-        brands = sorted(history_df['브랜드'].dropna().unique())
+        # ▼▼▼ [수정된 부분] ▼▼▼
+        # 브랜드 필터 옵션을 지정된 값으로 고정
+        brands = ['이퀄베리', '브랜든', '마켓올슨']
         selected_brand = st.multiselect(
             "브랜드 선택",
             options=brands,
             placeholder="필터링할 브랜드를 선택하세요 (여러 개 선택 가능)"
         )
+        # ▲▲▲ [수정된 부분] ▲▲▲
 
     with col2:
         # 품번/품명 검색 필터
@@ -45,7 +47,12 @@ else:
     # --- 데이터 필터링 로직 ---
     filtered_df = history_df.copy()
     if selected_brand:
+        # 지정된 브랜드 외 다른 브랜드가 DB에 있을 경우를 대비하여 필터링
         filtered_df = filtered_df[filtered_df['브랜드'].isin(selected_brand)]
+    else:
+        # 아무것도 선택하지 않으면 지정된 3개 브랜드만 보여줌
+        filtered_df = filtered_df[filtered_df['브랜드'].isin(brands)]
+
     
     if search_term:
         filtered_df = filtered_df[
@@ -58,7 +65,6 @@ else:
     # --- 결과 표시 ---
     st.markdown(f"**총 {len(filtered_df)}개**의 품목이 조회되었습니다.")
     
-    # st.dataframe을 사용하여 간단하고 빠르게 표를 표시
     st.dataframe(
         filtered_df,
         use_container_width=True,
