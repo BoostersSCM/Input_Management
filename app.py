@@ -1,7 +1,7 @@
 # app.py
 import streamlit as st
 import pandas as pd
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 from utils.db_functions import get_source_data, insert_receiving_data
 from datetime import date
 
@@ -54,10 +54,28 @@ if not source_df.empty:
     )
     if selected_brand:
         brand_df = source_df[source_df['브랜드'] == selected_brand]
-        part_numbers = sorted(brand_df['품번'].unique())
-        selected_part_number = st.selectbox(
-            "**품번**을 선택하세요.", options=part_numbers, index=None, placeholder="품번 검색..."
+        
+        # ▼▼▼ [수정된 부분] ▼▼▼
+        # 품번과 품명을 조합하여 드롭다운 옵션 생성
+        part_number_map_df = brand_df[['품번', '품명']].drop_duplicates()
+        part_number_map_df['formatted'] = part_number_map_df.apply(
+            lambda row: f"{row['품번']} ({row['품명']})", axis=1
         )
+        part_number_options = sorted(part_number_map_df['formatted'].unique())
+
+        selected_part_number_formatted = st.selectbox(
+            "**품번**을 선택하세요.",
+            options=part_number_options,
+            index=None,
+            placeholder="품번(품명) 검색..."
+        )
+
+        # 선택된 옵션에서 실제 품번 추출
+        selected_part_number = None
+        if selected_part_number_formatted:
+            selected_part_number = selected_part_number_formatted.split(" ")[0]
+        # ▲▲▲ [수정된 부분] ▲▲▲
+
         if selected_part_number:
             part_number_df = brand_df[brand_df['품번'] == selected_part_number]
             po_numbers = sorted(part_number_df['발주번호'].unique())
@@ -93,57 +111,47 @@ if selected_po:
 else:
     st.info("조회 조건을 모두 선택하면 입고 예정 품목이 여기에 표시됩니다.")
 
-# 3. (하단) 편집 및 최종 등록용 그리드 (st.form으로 감싸서 안정성 확보)
+# 3. (하단) 편집 및 최종 등록용 그리드 (st.data_editor)
 st.header("3. 입고 정보 편집 및 최종 등록")
 if not st.session_state.submission_list.empty:
     
-    st.info("표 안에서 자유롭게 편집한 후, 반드시 '변경사항 저장' 버튼을 눌러야 수정 내용이 반영됩니다.")
+    st.info("아래 표의 셀을 더블클릭하여 입고 정보를 직접 수정하세요. (엑셀처럼 복사/붙여넣기 가능)")
     
-    # ▼▼▼ [수정된 핵심 로직] ▼▼▼
-    # st.form으로 data_editor와 버튼들을 감싸서 불필요한 재실행을 방지
-    with st.form(key="submission_form"):
-        
-        column_order = [
-            '삭제', '발주번호', '품번', '품명', '버전', 
-            '입고일자', 'LOT', '유통기한', '확정수량'
-        ]
-        
-        column_config = {
-            "발주번호": st.column_config.TextColumn(disabled=True),
-            "품번": st.column_config.TextColumn(disabled=True),
-            "품명": st.column_config.TextColumn(disabled=True),
-            "확정수량": st.column_config.NumberColumn(min_value=0, format="%d", required=True),
-            "예정수량": None,
-        }
+    column_order = [
+        '삭제', '발주번호', '품번', '품명', '버전', 
+        '입고일자', 'LOT', '유통기한', '확정수량'
+    ]
+    
+    column_config = {
+        "발주번호": st.column_config.TextColumn(disabled=True),
+        "품번": st.column_config.TextColumn(disabled=True),
+        "품명": st.column_config.TextColumn(disabled=True),
+        "확정수량": st.column_config.NumberColumn(min_value=0, format="%d", required=True),
+        "예정수량": None,
+    }
 
-        # st.data_editor를 form 안에 배치
-        edited_df = st.data_editor(
-            st.session_state.submission_list,
-            column_order=column_order,
-            column_config=column_config,
-            hide_index=True,
-            num_rows="dynamic",
-            key='submission_editor'
-        )
+    edited_df = st.data_editor(
+        st.session_state.submission_list,
+        column_order=column_order,
+        column_config=column_config,
+        hide_index=True,
+        num_rows="dynamic",
+        key='submission_editor'
+    )
 
-        # --- 버튼 섹션 ---
-        col1, col2 = st.columns(2)
-        # form 안에 있는 버튼은 st.form_submit_button 사용
-        save_button = col1.form_submit_button(label="🔄 변경사항 저장")
-        clear_button = col2.form_submit_button(label="✨ 리스트 비우기")
-
-    # form 제출 후의 로직 처리
-    if save_button:
-        # '삭제' 체크된 행 제거
+    col1, col2 = st.columns(2)
+    delete_button = col1.button("🗑️ 선택 항목 삭제")
+    clear_button = col2.button("✨ 리스트 비우기")
+    
+    if delete_button:
         rows_to_keep = edited_df[edited_df['삭제'] == False]
         st.session_state.submission_list = rows_to_keep
-        st.success("변경사항이 저장되었습니다.")
         st.rerun()
-        
-    if clear_button:
+    elif clear_button:
         st.session_state.submission_list = pd.DataFrame()
         st.rerun()
-    # ▲▲▲ [수정된 핵심 로직] ▲▲▲
+    else:
+        st.session_state.submission_list = edited_df
             
     st.divider()
     if st.button("✅ 편집 리스트 전체 등록 및 DB 전송", type="primary"):
