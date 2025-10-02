@@ -133,7 +133,7 @@ def get_history_data():
                 ON
                     ei.itemno = niid.product_code
                 WHERE
-                    nii.is_delete = 0 
+                    nii.is_delete = 0 and  nii.intended_push_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) 
                 GROUP BY 
                     브랜드,
                     nii.intended_push_date,
