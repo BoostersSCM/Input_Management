@@ -107,3 +107,47 @@ def insert_receiving_data(data_list):
             return False, str(e)
             
     return False, "DB 연결 또는 데이터 없음"
+
+# ▼▼▼ [새로 추가할 함수] ▼▼▼
+def get_history_data():
+    """ERP DB에서 전체 입고 예정 이력 데이터를 조회합니다."""
+    engine_erp = init_connection_erp()
+    if engine_erp is not None:
+        try:
+            query = """
+                SELECT 
+                    SUBSTRING_INDEX(niid.product_name, '-', 1) AS 브랜드,
+                    nii.intended_push_date AS 입고예정일,
+                    niid.product_code AS 품번,
+                    niid.product_name AS 품명,
+                    niid.lot AS 버전,
+                    SUM(niid.quantity) AS 예정수량
+                FROM 
+                    boosters.nansoft_intended_inventory_details AS niid
+                LEFT JOIN
+                    boosters.nansoft_intended_inventorys AS nii 
+                ON
+                    nii.id = niid.nansoft_intended_inventory_id
+                LEFT JOIN
+                    boosters_erp.erp_items AS ei
+                ON
+                    ei.itemno = niid.product_code
+                WHERE
+                    nii.is_delete = 0 
+                GROUP BY 
+                    브랜드,
+                    nii.intended_push_date,
+                    niid.product_code, 
+                    niid.product_name, 
+                    niid.lot
+                ORDER BY 
+                    nii.intended_push_date DESC, niid.product_name
+            """
+            # 참고: 요청하신 쿼리에서 브랜드, 정렬 순서 등 일부를 최적화했습니다.
+            df = pd.read_sql(query, engine_erp)
+            return df
+        except Exception as e:
+            st.error(f"이력 데이터 조회 오류: {e}")
+            return pd.DataFrame()
+    return pd.DataFrame()
+# ▲▲▲ [새로 추가할 함수] ▲▲▲
