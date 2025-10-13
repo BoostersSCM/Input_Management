@@ -81,15 +81,17 @@ calendar_options = {
         "right": "dayGridMonth,listWeek"
     },
     "dayMaxEventRows": True,
-    # ✅ 최신 버전에서는 문자열 직접 전달해야 함
+    # ✅ 최신 버전에서는 JS 함수 문자열 그대로 전달해야 함
     "eventClick": """
         function(info) {
-            var d = info.event.extendedProps;
-            alert("📌 " + info.event.title + "\\n" +
-                  "📦 브랜드: " + d.브랜드 + "\\n" +
-                  "🔢 품번: " + d.품번 + "\\n" +
-                  "📄 발주번호: " + d.발주번호 + "\\n" +
-                  "🌀 버전: " + d.버전);
+            const d = info.event.extendedProps;
+            window.alert(
+                "📌 " + info.event.title + "\\n" +
+                "📦 브랜드: " + d.브랜드 + "\\n" +
+                "🔢 품번: " + d.품번 + "\\n" +
+                "📄 발주번호: " + d.발주번호 + "\\n" +
+                "🌀 버전: " + d.버전
+            );
         }
     """,
     "eventDidMount": """
