@@ -81,31 +81,27 @@ calendar_options = {
         "right": "dayGridMonth,listWeek"
     },
     "dayMaxEventRows": True,
-    "eventClick": {
-        "callback": """
-            function(info) {
-                var d = info.event.extendedProps;
-                alert("📌 " + info.event.title + "\\n" +
-                      "📦 브랜드: " + d.브랜드 + "\\n" +
-                      "🔢 품번: " + d.품번 + "\\n" +
-                      "📄 발주번호: " + d.발주번호 + "\\n" +
-                      "🌀 버전: " + d.버전);
-            }
-        """
-    },
-    "eventDidMount": {
-        "callback": """
-            function(info) {
-                // 글자 잘림 방지 및 크기 가변화
-                info.el.style.whiteSpace = 'normal';
-                info.el.style.wordBreak = 'break-word';
-                info.el.style.fontSize = '0.85rem';
-                info.el.style.lineHeight = '1.3';
-                info.el.style.padding = '2px 4px';
-                info.el.style.textOverflow = 'ellipsis';
-            }
-        """
-    }
+    # ✅ 최신 버전에서는 문자열 직접 전달해야 함
+    "eventClick": """
+        function(info) {
+            var d = info.event.extendedProps;
+            alert("📌 " + info.event.title + "\\n" +
+                  "📦 브랜드: " + d.브랜드 + "\\n" +
+                  "🔢 품번: " + d.품번 + "\\n" +
+                  "📄 발주번호: " + d.발주번호 + "\\n" +
+                  "🌀 버전: " + d.버전);
+        }
+    """,
+    "eventDidMount": """
+        function(info) {
+            info.el.style.whiteSpace = 'normal';
+            info.el.style.wordBreak = 'break-word';
+            info.el.style.fontSize = '0.85rem';
+            info.el.style.lineHeight = '1.3';
+            info.el.style.padding = '2px 4px';
+            info.el.style.textOverflow = 'ellipsis';
+        }
+    """
 }
 
 # --- 캘린더 렌더링 ---
