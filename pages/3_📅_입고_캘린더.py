@@ -12,6 +12,7 @@ st.caption("ERP에서 조회한 입고 예정 데이터를 브랜드별로 시�
 # --- 데이터 불러오기 ---
 @st.cache_data
 def load_data():
+    """ERP DB에서 입고예정 데이터를 불러옵니다."""
     df = get_history_data()
     if df.empty:
         return df
@@ -45,6 +46,7 @@ if search_term:
 
 # --- 브랜드별 색상 지정 ---
 def get_color(brand):
+    """브랜드명을 기준으로 고유 색상 생성"""
     hex_code = hashlib.md5(brand.encode()).hexdigest()
     return f"#{hex_code[:6]}"
 
@@ -79,27 +81,31 @@ calendar_options = {
         "right": "dayGridMonth,listWeek"
     },
     "dayMaxEventRows": True,
-    "eventClick": """
-        function(info) {
-            var d = info.event.extendedProps;
-            alert("📌 " + info.event.title + "\\n" +
-                  "📦 브랜드: " + d.브랜드 + "\\n" +
-                  "🔢 품번: " + d.품번 + "\\n" +
-                  "📄 발주번호: " + d.발주번호 + "\\n" +
-                  "🌀 버전: " + d.버전);
-        }
-    """,
-    "eventDidMount": """
-        function(info) {
-            // 글자 잘림 방지 및 크기 가변화
-            info.el.style.whiteSpace = 'normal';
-            info.el.style.wordBreak = 'break-word';
-            info.el.style.fontSize = '0.85rem';
-            info.el.style.lineHeight = '1.3';
-            info.el.style.padding = '2px 4px';
-            info.el.style.textOverflow = 'ellipsis';
-        }
-    """
+    "eventClick": {
+        "callback": """
+            function(info) {
+                var d = info.event.extendedProps;
+                alert("📌 " + info.event.title + "\\n" +
+                      "📦 브랜드: " + d.브랜드 + "\\n" +
+                      "🔢 품번: " + d.품번 + "\\n" +
+                      "📄 발주번호: " + d.발주번호 + "\\n" +
+                      "🌀 버전: " + d.버전);
+            }
+        """
+    },
+    "eventDidMount": {
+        "callback": """
+            function(info) {
+                // 글자 잘림 방지 및 크기 가변화
+                info.el.style.whiteSpace = 'normal';
+                info.el.style.wordBreak = 'break-word';
+                info.el.style.fontSize = '0.85rem';
+                info.el.style.lineHeight = '1.3';
+                info.el.style.padding = '2px 4px';
+                info.el.style.textOverflow = 'ellipsis';
+            }
+        """
+    }
 }
 
 # --- 캘린더 렌더링 ---
