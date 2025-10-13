@@ -83,6 +83,7 @@ def get_history_data():
                 SELECT 
                     SUBSTRING_INDEX(niid.product_name, '-', 1) AS 브랜드,
                     nii.intended_push_date AS 입고예정일,
+                    nii.po_no AS 발주번호,              -- ✅ 추가됨
                     niid.product_code AS 품번,
                     niid.product_name AS 품명,
                     niid.lot AS 버전,
@@ -103,14 +104,12 @@ def get_history_data():
                 GROUP BY 
                     브랜드,
                     nii.intended_push_date,
+                    nii.po_no,                         -- ✅ 추가됨
                     niid.product_code, 
                     niid.product_name, 
                     niid.lot
                 ORDER BY 
-                    -- ▼▼▼ [수정된 부분] ▼▼▼
-                    -- DESC (내림차순)를 제거하여 ASC (오름차순)으로 기본 정렬 변경
                     nii.intended_push_date, niid.product_name
-                    -- ▲▲▲ [수정된 부분] ▲▲▲
             """
             df = pd.read_sql(query, engine_erp)
             return df
