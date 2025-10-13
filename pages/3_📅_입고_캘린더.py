@@ -12,7 +12,6 @@ st.caption("ERP에서 조회한 입고 예정 데이터를 브랜드별로 시�
 # --- 데이터 불러오기 ---
 @st.cache_data
 def load_data():
-    """ERP DB에서 입고예정 데이터를 불러옵니다."""
     df = get_history_data()
     if df.empty:
         return df
@@ -53,14 +52,14 @@ def get_color(brand: str) -> str:
     hex_code = hashlib.md5(str(brand).encode()).hexdigest()
     return f"#{hex_code[:6]}"
 
-# --- 캘린더 이벤트 데이터 생성 ---
+# --- 캘린더 이벤트 생성 ---
 events = []
 for _, row in filtered_df.iterrows():
     version = row.get("버전", "") or ""
     quantity = f"{row['예정수량']:,}개"
     title = f"{row['품명']} ({version}) - {quantity}" if version else f"{row['품명']} - {quantity}"
-
     start_str = row["입고예정일"].strftime("%Y-%m-%d")
+
     events.append({
         "title": title,
         "start": start_str,
@@ -85,13 +84,14 @@ calendar_options = {
         "right": "dayGridMonth,listWeek"
     },
     "dayMaxEventRows": True,
+    "selectable": True
 }
 
 # --- 캘린더 렌더링 ---
 st.subheader(f"📅 {'월간 보기' if view_mode == '월간 보기' else '리스트 보기'}")
 selected = calendar(events=events, options=calendar_options, key="inbound_calendar")
 
-# --- 클릭/선택 결과 표시 ---
+# --- 선택된 이벤트 처리 ---
 def show_event_detail(ev: dict):
     d = ev.get("extendedProps", {})
     st.markdown("### 🔍 선택한 일정 상세")
@@ -101,34 +101,26 @@ def show_event_detail(ev: dict):
         f"🔢 **품번:** {d.get('품번','')}\n\n"
         f"📄 **발주번호:** {d.get('발주번호','')}\n\n"
         f"🌀 **버전:** {d.get('버전','')}\n\n"
-        f"⏱ **시작:** {ev.get('start','')}\n"
-        f"⏱ **종료:** {ev.get('end','')}"
+        f"⏱ **일자:** {ev.get('start','')}"
     )
 
 if isinstance(selected, dict) and "callback" in selected:
     cb = selected.get("callback")
-    # 이벤트 클릭
+
     if cb == "eventClick":
         ev = (selected.get("eventClick") or {}).get("event", {})
         if ev:
             show_event_detail(ev)
 
-    # 날짜 클릭 (이벤트가 아닌 빈 날짜 클릭)
     elif cb == "dateClick":
         info = selected.get("dateClick", {})
         st.markdown("### 📅 날짜 선택")
         st.success(f"선택한 날짜: **{info.get('date','')}** (allDay={info.get('allDay')})")
 
-    # 드래그로 범위 선택 (원하면 options에 'selectable': True 추가)
     elif cb == "select":
         info = selected.get("select", {})
         st.markdown("### 📐 날짜 범위 선택")
         st.success(f"{info.get('start','')} ~ {info.get('end','')} (allDay={info.get('allDay')})")
-
-    # 이벤트 변경/세트(옵션): 필요시 디버그 출력
-    elif cb in ("eventChange", "eventsSet"):
-        st.write("📄 콜백 결과:", selected)
-        )
 
 # --- 데이터 테이블 ---
 with st.expander("📋 원본 데이터 보기 (필터 적용됨)"):
