@@ -72,43 +72,39 @@ for _, row in filtered_df.iterrows():
 calendar_options = {
     "initialView": initial_view,
     "locale": "ko",
-    "height": 800,
+    "height": 850,
     "headerToolbar": {
         "left": "prev,next today",
         "center": "title",
         "right": "dayGridMonth,listWeek"
     },
     "dayMaxEventRows": True,
-    "eventClick": {
-        "callback": """
-            function(info) {
-                var d = info.event.extendedProps;
-                alert("📌 " + info.event.title + "\\n" +
-                      "📦 브랜드: " + d.브랜드 + "\\n" +
-                      "🔢 품번: " + d.품번 + "\\n" +
-                      "📄 발주번호: " + d.발주번호 + "\\n" +
-                      "🌀 버전: " + d.버전);
-            }
-        """
-    },
-    "eventDidMount": {
-        "callback": """
-            function(info) {
-                // 글자 잘림 방지 및 크기 가변화
-                info.el.style.whiteSpace = 'normal';
-                info.el.style.wordBreak = 'break-word';
-                info.el.style.fontSize = '0.85rem';
-                info.el.style.lineHeight = '1.3';
-                info.el.style.padding = '2px 4px';
-                info.el.style.textOverflow = 'ellipsis';
-            }
-        """
-    },
+    "eventClick": """
+        function(info) {
+            var d = info.event.extendedProps;
+            alert("📌 " + info.event.title + "\\n" +
+                  "📦 브랜드: " + d.브랜드 + "\\n" +
+                  "🔢 품번: " + d.품번 + "\\n" +
+                  "📄 발주번호: " + d.발주번호 + "\\n" +
+                  "🌀 버전: " + d.버전);
+        }
+    """,
+    "eventDidMount": """
+        function(info) {
+            // 글자 잘림 방지 및 크기 가변화
+            info.el.style.whiteSpace = 'normal';
+            info.el.style.wordBreak = 'break-word';
+            info.el.style.fontSize = '0.85rem';
+            info.el.style.lineHeight = '1.3';
+            info.el.style.padding = '2px 4px';
+            info.el.style.textOverflow = 'ellipsis';
+        }
+    """
 }
 
 # --- 캘린더 렌더링 ---
 st.subheader(f"📅 {'월간 보기' if view_mode == '월간 보기' else '리스트 보기'}")
-calendar(events=events, options=calendar_options, height=850)
+calendar(events=events, options=calendar_options)
 
 # --- 데이터 테이블 ---
 with st.expander("📋 원본 데이터 보기 (필터 적용됨)"):
