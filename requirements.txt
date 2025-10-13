@@ -1,5 +1,5 @@
 streamlit==1.39.0
-streamlit-calendar==0.0.3
+streamlit-calendar>=0.0.4
 pandas
 sqlalchemy
 pymysql
