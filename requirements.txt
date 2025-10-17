@@ -3,3 +3,4 @@ streamlit-calendar>=0.0.4
 pandas
 sqlalchemy
 pymysql
+streamlit-aggrid
